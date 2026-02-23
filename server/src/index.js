@@ -7,6 +7,9 @@ import householdRouter from './routes/household.js';
 import incomeRouter from './routes/income.js';
 import expenseRouter from './routes/expense.js';
 import fixedExpenseRouter from './routes/fixedExpense.js';
+import goalRouter from './routes/goal.js';
+import Household from './models/Household.js';
+import Goal from './models/Goal.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -26,6 +29,58 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/household')
 // Health Check
 app.get('/health', (req, res) => {
   res.json({ status: 'Server running', timestamp: new Date().toISOString() });
+});
+
+// Dev Only: Seed Goals from Notion data
+app.post('/api/dev/seed-goals', async (req, res) => {
+  if (process.env.NODE_ENV !== 'development') {
+    return res.status(403).json({ error: 'Not allowed in production' });
+  }
+  try {
+    // Find the first household in the DB
+    const household = await Household.findOne({});
+    if (!household) return res.status(404).json({ error: 'No household found. Register first.' });
+
+    const householdId = household.householdId;
+    const owner = household.members?.[0];
+    const userId = owner?.userId || 'seed';
+
+    // Remove existing goals for this household so we don't double-seed
+    await Goal.deleteMany({ householdId });
+
+    const notionGoals = [
+      {
+        name: 'Emergency Fund / Fondo de Emergencia',
+        type: 'Emergency',
+        monthlyContribution: 500,
+        target: 5000,
+        currentBalance: 100,
+      },
+      {
+        name: 'Project Fund / Fondo de Proyecto',
+        type: 'Project',
+        monthlyContribution: 500,
+        target: 25000,
+        currentBalance: 0,
+      },
+      {
+        name: 'Investment Fund / Fondo de Inversión',
+        type: 'Investment',
+        monthlyContribution: 300,
+        target: 0,
+        currentBalance: 0,
+      },
+    ];
+
+    const created = await Goal.insertMany(
+      notionGoals.map((g) => ({ ...g, householdId, userId, isActive: true }))
+    );
+
+    res.json({ success: true, householdId, count: created.length, goals: created.map(g => g.name) });
+  } catch (err) {
+    console.error('[seed-goals] error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Dev Only: Clear Database (remove in production)
@@ -54,6 +109,7 @@ app.use('/api/households', householdRouter);
 app.use('/api/income', incomeRouter);
 app.use('/api/expenses', expenseRouter);
 app.use('/api/fixed-expenses', fixedExpenseRouter);
+app.use('/api/goals', goalRouter);
 
 // Error Handler
 app.use((err, req, res, next) => {

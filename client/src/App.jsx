@@ -7,6 +7,7 @@ import DashboardPage from './pages/DashboardPage';
 import IncomePage from './pages/IncomePage';
 import ExpensesPage from './pages/ExpensesPage';
 import FixedExpensesPage from './pages/FixedExpensesPage';
+import GoalsPage from './pages/GoalsPage';
 import UnauthorizedPage from './pages/UnauthorizedPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -23,6 +24,7 @@ function App() {
             <Route path="/income" element={<ProtectedRoute><IncomePage /></ProtectedRoute>} />
             <Route path="/expenses" element={<ProtectedRoute><ExpensesPage /></ProtectedRoute>} />
             <Route path="/fixed-expenses" element={<ProtectedRoute><FixedExpensesPage /></ProtectedRoute>} />
+            <Route path="/goals" element={<ProtectedRoute><GoalsPage /></ProtectedRoute>} />
             <Route path="/unauthorized" element={<UnauthorizedPage />} />
             <Route path="/" element={<Navigate to="/dashboard" />} />
           </Routes>

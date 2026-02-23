@@ -13,6 +13,7 @@ export default function DashboardPage(){
   const { t, language } = useLanguage();
   const [summary, setSummary] = useState(null);
   const [fixedExpensesTotal, setFixedExpensesTotal] = useState(0);
+  const [goals, setGoals] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(()=>{
@@ -23,7 +24,10 @@ export default function DashboardPage(){
           .catch((err)=> console.error('Summary load failed', err)),
         api.get(`/fixed-expenses/${user.householdId}`)
           .then((res)=> setFixedExpensesTotal(res.data.total || 0))
-          .catch((err)=> console.error('Fixed expenses load failed', err))
+          .catch((err)=> console.error('Fixed expenses load failed', err)),
+        api.get(`/goals/${user.householdId}`)
+          .then((res)=> setGoals(res.data.goals || []))
+          .catch((err)=> console.error('Goals load failed', err)),
       ]).finally(()=> setLoading(false));
     }
   }, [user]);
@@ -78,6 +82,36 @@ export default function DashboardPage(){
                 <li className="flex justify-between"><span>Salary</span><span className="font-medium">$4,500</span></li>
                 <li className="flex justify-between"><span>Internet</span><span className="font-medium">$60</span></li>
               </ul>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 shadow-md border border-gray-100 mt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium text-gray-600">{t('Goals & Funds', 'Metas y Fondos')}</h3>
+                <a href="/goals" className="text-xs text-teal-600 hover:text-teal-700">{t('View all', 'Ver todo')}</a>
+              </div>
+              {goals.length === 0 ? (
+                <div className="text-xs text-gray-400 py-3 text-center">{t('No goals yet.', 'Sin objetivos aún.')}</div>
+              ) : (
+                <ul className="space-y-3">
+                  {goals.slice(0, 3).map((goal) => {
+                    const key = goal._id || goal.id;
+                    const progress = goal.progressPercent != null ? goal.progressPercent : (goal.target > 0 ? Math.min(100, Math.round((goal.currentBalance / goal.target) * 100)) : null);
+                    return (
+                      <li key={key}>
+                        <div className="flex justify-between text-xs text-gray-600 mb-1">
+                          <span className="font-medium text-gray-700">{goal.name}</span>
+                          <span>{progress != null ? `${progress}%` : `$${Number(goal.currentBalance || 0).toFixed(0)}`}</span>
+                        </div>
+                        {goal.target > 0 && (
+                          <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                            <div className="h-1.5 rounded-full bg-teal-500 transition-all" style={{ width: `${progress}%` }} />
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
           </aside>
         </div>
