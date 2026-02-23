@@ -86,28 +86,28 @@ export default function MemberManagementPage() {
       <div className="max-w-5xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             {t('Member Management', 'Gestión de Miembros')}
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-gray-600 dark:text-gray-300 mt-2">
             {t('Manage household members and invitations', 'Gestionar miembros e invitaciones del hogar')}
           </p>
         </div>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-700 text-sm">{error}</p>
+          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">
+            <p className="text-red-700 dark:text-red-300 text-sm">{error}</p>
           </div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Current Members */}
-          <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-md border border-gray-100 dark:border-gray-700">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-800">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
                 {t('Household Members', 'Miembros del Hogar')}
               </h2>
-              <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+              <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full text-sm font-medium">
                 {household?.members?.length || 0}
               </span>
             </div>
@@ -117,17 +117,17 @@ export default function MemberManagementPage() {
                 {household.members.map((member, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
+                    className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
-                        <span className="text-indigo-600 font-semibold text-sm">
+                      <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center">
+                        <span className="text-indigo-600 dark:text-indigo-300 font-semibold text-sm">
                           {member.name?.charAt(0).toUpperCase() || '?'}
                         </span>
                       </div>
                       <div>
-                        <div className="font-medium text-gray-800">{member.name || 'Member'}</div>
-                        <div className="text-sm text-gray-500">{member.email || ''}</div>
+                        <div className="font-medium text-gray-900 dark:text-white">{member.name || 'Member'}</div>
+                        <div className="text-sm text-gray-500 dark:text-gray-400">{member.email || ''}</div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -167,9 +167,9 @@ export default function MemberManagementPage() {
 
         {/* Pending Invites */}
         {pendingInvites.length > 0 && (
-          <div className="mt-6 bg-white rounded-2xl p-6 shadow-md border border-gray-100">
+          <div className="mt-6 bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-md border border-gray-100 dark:border-gray-700">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-800">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
                 {t('Pending Invitations', 'Invitaciones Pendientes')}
               </h2>
               <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-sm font-medium">
@@ -185,7 +185,7 @@ export default function MemberManagementPage() {
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-gray-800">{invite.email}</span>
+                      <span className="font-medium text-gray-900 dark:text-white">{invite.email}</span>
                       <span className="px-2 py-0.5 bg-yellow-200 text-yellow-800 rounded text-xs">
                         {t('Pending', 'Pendiente')}
                       </span>

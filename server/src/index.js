@@ -11,9 +11,18 @@ import fixedExpenseRouter from './routes/fixedExpense.js';
 import fixedExpensePaymentRouter from './routes/fixedExpensePayment.js';
 import goalRouter from './routes/goal.js';
 import goalContributionRouter from './routes/goalContribution.js';
+import creditCardRouter from './routes/creditCard.js';
+import cardStatementRouter from './routes/cardStatement.js';
+import debtPaymentRouter from './routes/debtPayment.js';
 import Household from './models/Household.js';
 import Goal from './models/Goal.js';
 import IncomeSplit from './models/IncomeSplit.js';
+import FixedExpense from './models/FixedExpense.js';
+import Income from './models/Income.js';
+import Expense from './models/Expense.js';
+import CreditCard from './models/CreditCard.js';
+import CardStatement from './models/CardStatement.js';
+import DebtPayment from './models/DebtPayment.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -174,6 +183,204 @@ app.post('/api/dev/clear-db', async (req, res) => {
   }
 });
 
+// Dev Only: Master Seed Endpoint - Comprehensive test data
+app.post('/api/dev/seed-all', async (req, res) => {
+  if (process.env.NODE_ENV !== 'development') {
+    return res.status(403).json({ error: 'Not allowed in production' });
+  }
+
+  try {
+    const results = {
+      household: null,
+      goals: 0,
+      incomeSplits: 0,
+      fixedExpenses: 0,
+      incomeEntries: 0,
+      expenseEntries: 0,
+      creditCards: 0,
+      cardStatements: 0,
+      debtPayments: 0,
+    };
+
+    // Find or create household
+    let household = await Household.findOne({});
+    if (!household) {
+      return res.status(400).json({ error: 'Please register a household first via /api/auth/register' });
+    }
+    results.household = { householdId: household.householdId, name: household.name };
+    const householdId = household.householdId;
+    const members = household.members || [];
+    const userId = members[0]?.userId || 'seed';
+
+    // 1. Seed Goals
+    await Goal.deleteMany({ householdId });
+    const goals = await Goal.insertMany([
+      { householdId, userId, name: 'Emergency Fund', type: 'Emergency', target: 5000, currentBalance: 1200, monthlyContribution: 500, isActive: true },
+      { householdId, userId, name: 'Vacation Fund', type: 'Vacation', target: 3000, currentBalance: 800, monthlyContribution: 300, isActive: true },
+      { householdId, userId, name: 'Home Repair Fund', type: 'Project', target: 10000, currentBalance: 2500, monthlyContribution: 400, isActive: true },
+    ]);
+    results.goals = goals.length;
+
+    // 2. Seed Income Splits
+    await IncomeSplit.deleteMany({ householdId });
+    if (members.length > 0) {
+      const splits = members.map((member, idx) => ({
+        householdId,
+        userId: member.userId,
+        userName: member.name,
+        splitPercentage: members.length === 1 ? 100 : (idx === 0 ? 60 : 40),
+        isHeadOfHouse: idx === 0,
+      }));
+      const createdSplits = await IncomeSplit.insertMany(splits);
+      results.incomeSplits = createdSplits.length;
+    }
+
+    // 3. Seed Fixed Expenses
+    await FixedExpense.deleteMany({ householdId });
+    const now = new Date();
+    const fixedExpenses = [
+      { householdId, userId, name: 'Rent', amount: 1500, group: 'Housing', frequency: 'monthly', dueDay: 1, isActive: true },
+      { householdId, userId, name: 'Electricity', amount: 120, group: 'Utilities', frequency: 'monthly', dueDay: 15, isActive: true },
+      { householdId, userId, name: 'Internet', amount: 80, group: 'Utilities', frequency: 'monthly', dueDay: 15, isActive: true },
+      { householdId, userId, name: 'Water', amount: 40, group: 'Utilities', frequency: 'monthly', dueDay: 20, isActive: true },
+      { householdId, userId, name: 'Car Insurance', amount: 95, group: 'Transportation', frequency: 'monthly', dueDay: 10, isActive: true },
+      { householdId, userId, name: 'Groceries Budget', amount: 600, group: 'Food', frequency: 'monthly', dueDay: 1, isActive: true },
+    ];
+    const createdFixedExpenses = await FixedExpense.insertMany(fixedExpenses);
+    results.fixedExpenses = createdFixedExpenses.length;
+
+    // 4. Seed Income Entries (last 6 months)
+    await Income.deleteMany({ householdId });
+    const incomeData = [];
+    for (let i = 0; i < 6; i++) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      incomeData.push({
+        householdId,
+        userId,
+        contributorName: members[0]?.name || 'Primary Earner',
+        month: monthStr,
+        week: 1,
+        dailyBreakdown: [{ date: date.toISOString(), amount: 4500, source: 'Salary', description: 'Monthly Salary' }],
+        weeklyTotal: 4500,
+        projection: { currentPace: 4500, confidence: 0.95 },
+      });
+    }
+    const createdIncomes = await Income.insertMany(incomeData);
+    results.incomeEntries = createdIncomes.length;
+
+    // 5. Seed Variable Expenses (last 3 months)
+    await Expense.deleteMany({ householdId });
+    const expenses = [];
+    const expenseCategories = ['Groceries', 'Gas', 'Entertainment', 'Dining Out', 'Shopping', 'Medical'];
+    for (let i = 0; i < 12; i++) {
+      const date = new Date(now.getTime() - i * 7 * 24 * 60 * 60 * 1000);
+      const monthStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const category = expenseCategories[Math.floor(Math.random() * expenseCategories.length)];
+      const amount = Math.round((Math.random() * 200 + 20) * 100) / 100;
+      expenses.push({
+        householdId,
+        userId,
+        contributorName: members[0]?.name || 'Contributor',
+        amount,
+        category,
+        description: `${category} expense`,
+        date,
+        month: monthStr,
+        week: Math.ceil(date.getDate() / 7),
+        source: 'manual',
+      });
+    }
+    const createdExpenses = await Expense.insertMany(expenses);
+    results.expenseEntries = createdExpenses.length;
+
+    // 6. Seed Credit Cards
+    await CreditCard.deleteMany({ householdId });
+    const creditCards = await CreditCard.insertMany([
+      {
+        householdId,
+        userId,
+        cardName: 'Chase Sapphire',
+        holder: members[0]?.name || 'Primary Member',
+        originalBalance: 5000,
+        currentBalance: 2400,
+        minPayment: 150,
+        plannedExtraPayment: 300,
+        interestRate: 18.5,
+        creditLimit: 15000,
+        dueDay: 15,
+      },
+      {
+        householdId,
+        userId,
+        cardName: 'AmEx Blue',
+        holder: members[0]?.name || 'Primary Member',
+        originalBalance: 3000,
+        currentBalance: 1200,
+        minPayment: 100,
+        plannedExtraPayment: 200,
+        interestRate: 19.2,
+        creditLimit: 10000,
+        dueDay: 20,
+      },
+    ]);
+    results.creditCards = creditCards.length;
+
+    // 7. Seed Card Statements
+    await CardStatement.deleteMany({ householdId });
+    const statements = [];
+    for (let i = 0; i < 3; i++) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      creditCards.forEach((card) => {
+        statements.push({
+          householdId,
+          cardId: card._id,
+          statementName: `${card.cardName} - ${monthStr}`,
+          month: monthStr,
+          statementDate: date,
+          statementBalance: card.originalBalance * 0.5 + Math.random() * 500,
+          currentBalance: card.currentBalance + Math.random() * 200,
+        });
+      });
+    }
+    const createdStatements = await CardStatement.insertMany(statements);
+    results.cardStatements = createdStatements.length;
+
+    // 8. Seed Debt Payments
+    await DebtPayment.deleteMany({ householdId });
+    const payments = [];
+    for (let i = 0; i < 6; i++) {
+      const date = new Date(now.getTime() - i * 30 * 24 * 60 * 60 * 1000);
+      const monthStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const card = creditCards[i % creditCards.length];
+      const statement = createdStatements.find(s => s.cardId.toString() === card._id.toString());
+      if (statement) {
+        payments.push({
+          householdId,
+          cardId: card._id,
+          statementId: statement._id,
+          amount: 500 + Math.random() * 300,
+          paymentDate: date,
+          paymentMethod: ['online', 'check', 'transfer'][Math.floor(Math.random() * 3)],
+          month: monthStr,
+        });
+      }
+    }
+    const createdPayments = await DebtPayment.insertMany(payments);
+    results.debtPayments = createdPayments.length;
+
+    res.json({
+      success: true,
+      message: 'Comprehensive test data seeded successfully',
+      results,
+    });
+  } catch (error) {
+    console.error('[seed-all] error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Routes
 app.use('/api/auth', authRouter);
 app.use('/api/households', householdRouter);
@@ -184,6 +391,9 @@ app.use('/api/fixed-expenses', fixedExpenseRouter);
 app.use('/api/fixed-expense-payments', fixedExpensePaymentRouter);
 app.use('/api/goals', goalRouter);
 app.use('/api/goal-contributions', goalContributionRouter);
+app.use('/api/credit-cards', creditCardRouter);
+app.use('/api/card-statements', cardStatementRouter);
+app.use('/api/debt-payments', debtPaymentRouter);
 
 // Error Handler
 app.use((err, req, res, next) => {

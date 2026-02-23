@@ -54,21 +54,21 @@ export default function IncomeSplitConfig({ householdId, onUpdate }) {
   const totalSplit = splits.reduce((sum, s) => sum + (s.splitPercentage || 0), 0);
 
   return (
-    <div className="bg-white rounded-2xl p-5 shadow-md border border-gray-100">
-      <h3 className="text-sm font-semibold text-gray-700 mb-4">
+    <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-md border border-gray-100 dark:border-gray-700">
+      <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
         {t('Income Split Configuration', 'Configuración de División de Ingresos')}
       </h3>
 
       <div className="space-y-3">
         {splits.map((split) => (
-          <div key={split._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+          <div key={split._id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
             <div className="flex-1">
-              <div className="text-sm font-medium text-gray-700">
+              <div className="text-sm font-medium text-gray-900 dark:text-white">
                 {split.userId.name || split.userName}
               </div>
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-gray-500 dark:text-gray-400">
                 {split.isHeadOfHouse && (
-                  <span className="inline-block mr-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">
+                  <span className="inline-block mr-2 px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full">
                     {t('Head of House', 'Jefe de Hogar')}
                   </span>
                 )}
@@ -118,15 +118,15 @@ export default function IncomeSplitConfig({ householdId, onUpdate }) {
         ))}
       </div>
 
-      <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+      <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
         <div className="flex justify-between items-center text-sm">
-          <span className="text-gray-600">{t('Total Split', 'División Total')}</span>
-          <span className={`font-bold ${totalSplit === 100 ? 'text-green-600' : 'text-orange-600'}`}>
+          <span className="text-gray-600 dark:text-gray-300">{t('Total Split', 'División Total')}</span>
+          <span className={`font-bold ${totalSplit === 100 ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'}`}>
             {totalSplit}%
           </span>
         </div>
         {totalSplit !== 100 && (
-          <div className="text-xs text-orange-600 mt-1">
+          <div className="text-xs text-orange-600 dark:text-orange-400 mt-1">
             {t('Note: Total should equal 100%', 'Nota: El total debe ser 100%')}
           </div>
         )}

@@ -35,20 +35,20 @@ export default function HouseholdInvitesList({ householdId }) {
   };
 
   if (loading) {
-    return <div className="text-gray-500">{t('Loading...', 'Cargando...')}</div>;
+    return <div className="text-gray-500 dark:text-gray-400">{t('Loading...', 'Cargando...')}</div>;
   }
 
   if (invites.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-400">
+      <div className="text-center py-8 text-gray-400 dark:text-gray-500">
         <div className="text-sm">{t('No pending invites', 'Sin invitaciones pendientes')}</div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-2xl p-5 shadow-md border border-gray-100">
-      <h3 className="text-sm font-semibold text-gray-700 mb-4">
+    <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-md border border-gray-100 dark:border-gray-700">
+      <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
         {t('Pending Invites', 'Invitaciones Pendientes')} ({invites.length})
       </h3>
 
@@ -58,19 +58,19 @@ export default function HouseholdInvitesList({ householdId }) {
           const isExpiringSoon = expiresIn <= 3;
 
           return (
-            <div key={invite._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <div key={invite._id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-700 truncate">
+                <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
                   {invite.email}
                 </div>
-                <div className={`text-xs ${isExpiringSoon ? 'text-orange-600' : 'text-gray-500'}`}>
+                <div className={`text-xs ${isExpiringSoon ? 'text-orange-600 dark:text-orange-400' : 'text-gray-500 dark:text-gray-400'}`}>
                   {t('Expires in', 'Expira en')} {expiresIn} {t('days', 'días')}
                 </div>
               </div>
 
               <button
                 onClick={() => handleResendInvite(invite)}
-                className="ml-2 px-3 py-1 text-xs bg-indigo-100 text-indigo-600 rounded hover:bg-indigo-200 whitespace-nowrap"
+                className="ml-2 px-3 py-1 text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 rounded hover:bg-indigo-200 dark:hover:bg-indigo-800 whitespace-nowrap transition-colors"
               >
                 {t('Resend', 'Reenviar')}
               </button>

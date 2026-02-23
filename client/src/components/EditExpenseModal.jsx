@@ -29,8 +29,8 @@ export default function EditExpenseModal({ expense, members = [], onSave, onClos
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-md w-full">
-        <h2 className="text-xl font-bold mb-4">{t('Edit Expense', 'Editar Gasto')}</h2>
+      <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-2xl max-w-md w-full">
+        <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">{t('Edit Expense', 'Editar Gasto')}</h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

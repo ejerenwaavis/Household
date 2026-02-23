@@ -96,6 +96,29 @@ router.get('/:householdId/:month', authMiddleware, householdAuthMiddleware, asyn
   }
 });
 
+// Get all expenses for a household (for dashboard/charts)
+router.get('/:householdId', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId } = req.params;
+
+    const expenses = await Expense.find({ householdId }).sort({ date: -1 });
+
+    const total = expenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
+
+    const byMonth = {};
+    expenses.forEach((exp) => {
+      const month = exp.month;
+      if (!byMonth[month]) byMonth[month] = 0;
+      byMonth[month] += Number(exp.amount) || 0;
+    });
+
+    res.json({ expenses, total, byMonth });
+  } catch (error) {
+    console.error('[expense GET all] error', error && (error.stack || error.message || error));
+    next(error);
+  }
+});
+
 // Delete expense
 router.delete('/:householdId/:expenseId', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
   try {

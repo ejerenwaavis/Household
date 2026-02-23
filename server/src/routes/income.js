@@ -129,6 +129,29 @@ router.get('/:householdId/:month', authMiddleware, householdAuthMiddleware, asyn
   }
 });
 
+// Get all income entries for a household (for dashboard/charts)
+router.get('/:householdId', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId } = req.params;
+
+    const incomes = await Income.find({ householdId }).sort({ createdAt: -1 });
+
+    const total = incomes.reduce((sum, doc) => sum + (Number(doc.weeklyTotal) || 0), 0);
+
+    const byMonth = {};
+    incomes.forEach((doc) => {
+      const month = doc.month;
+      if (!byMonth[month]) byMonth[month] = 0;
+      byMonth[month] += Number(doc.weeklyTotal) || 0;
+    });
+
+    res.json({ incomes, total, byMonth });
+  } catch (error) {
+    console.error('[income GET all] error', error && (error.stack || error.message || error));
+    next(error);
+  }
+});
+
 // Update an income entry (partial updates supported)
 router.patch('/:householdId/:id', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
   try {

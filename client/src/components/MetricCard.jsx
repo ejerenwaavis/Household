@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 export default function MetricCard({ title, value, subtitle, accent, valueColor, linkTo, onClick }){
   const navigate = useNavigate();
   const accentClass = accent || 'bg-indigo-500';
-  const valueClass = valueColor || 'text-gray-800';
+  const valueClass = valueColor || 'text-gray-700 dark:text-gray-300';
 
   const handleClick = () => {
     if (onClick) onClick();
@@ -14,11 +14,11 @@ export default function MetricCard({ title, value, subtitle, accent, valueColor,
   const isClickable = linkTo || onClick;
 
   return (
-    <div className={`bg-white rounded-2xl p-5 shadow-md border border-gray-100 ${isClickable ? 'cursor-pointer hover:shadow-lg hover:border-gray-200 transition-all' : ''}`} onClick={handleClick}>
-      <div className="flex items-center justify-between">
+    <div className={`bg-white dark:bg-gray-750 rounded-2xl p-4 sm:p-5 shadow-md border border-gray-200 dark:border-gray-700 ${isClickable ? 'cursor-pointer hover:shadow-lg hover:border-gray-300 dark:hover:border-gray-600 transition-all' : ''}`} onClick={handleClick}>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-0">
         <div>
-          <h4 className="text-sm font-medium text-gray-500">{title}</h4>
-          <p className={`mt-1 text-2xl font-semibold ${valueClass}`}>{value}</p>
+          <h4 className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">{title}</h4>
+          <p className={`mt-1 text-xl sm:text-2xl font-semibold ${valueClass}`}>{value}</p>
         </div>
         <div className={`p-3 rounded-lg text-white ${accentClass} ${isClickable ? 'group' : ''}`}>
           {isClickable ? (
@@ -32,7 +32,7 @@ export default function MetricCard({ title, value, subtitle, accent, valueColor,
           )}
         </div>
       </div>
-      {subtitle && <p className="mt-3 text-xs text-gray-400">{subtitle}</p>}
+      {subtitle && <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">{subtitle}</p>}
     </div>
   );
 }

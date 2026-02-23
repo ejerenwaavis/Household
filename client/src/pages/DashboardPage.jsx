@@ -15,6 +15,11 @@ export default function DashboardPage(){
   const [fixedExpensesTotal, setFixedExpensesTotal] = useState(0);
   const [payments, setPayments] = useState([]);
   const [goals, setGoals] = useState([]);
+  const [creditCards, setCreditCards] = useState([]);
+  const [creditSummary, setCreditSummary] = useState(null);
+  const [recentTransactions, setRecentTransactions] = useState([]);
+  const [monthlyData, setMonthlyData] = useState([]);
+  const [monthlyLabels, setMonthlyLabels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [household, setHousehold] = useState(null);
   const [pendingInvites, setPendingInvites] = useState([]);
@@ -26,11 +31,14 @@ export default function DashboardPage(){
       const now = new Date();
       const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       
-      const [summaryRes, expensesRes, paymentsRes, goalsRes] = await Promise.all([
+      const [summaryRes, expensesRes, paymentsRes, goalsRes, creditCardsRes, incomeRes, variableExpensesRes] = await Promise.all([
         api.get(`/households/${user.householdId}/summary`).catch(err => { console.error('Summary load failed', err); return null; }),
         api.get(`/fixed-expenses/${user.householdId}`).catch(err => { console.error('Fixed expenses load failed', err); return null; }),
         api.get(`/fixed-expense-payments/${user.householdId}?month=${monthStr}`).catch(err => { console.error('Payments load failed', err); return null; }),
         api.get(`/goals/${user.householdId}`).catch(err => { console.error('Goals load failed', err); return null; }),
+        api.get(`/credit-cards/${user.householdId}`).catch(err => { console.error('Credit cards load failed', err); return null; }),
+        api.get(`/income/${user.householdId}`).catch(err => { console.error('Income load failed', err); return null; }),
+        api.get(`/expenses/${user.householdId}`).catch(err => { console.error('Variable expenses load failed', err); return null; }),
       ]);
       
       // Also fetch household details to get members list and pending invites
@@ -52,8 +60,65 @@ export default function DashboardPage(){
         setPayments(paymentsRes.data.payments || []);
       }
       if (goalsRes?.data) setGoals(goalsRes.data.goals || []);
+      if (creditCardsRes?.data) {
+        setCreditCards(creditCardsRes.data.cards || []);
+        setCreditSummary(creditCardsRes.data.summary || null);
+      }
       if (householdRes?.data) setHousehold(householdRes.data);
       if (invitesRes?.data) setPendingInvites(invitesRes.data.invites || []);
+      
+      // Build chart data from income and expenses (net per month)
+      if (incomeRes?.data && variableExpensesRes?.data) {
+        const incomeByMonth = incomeRes.data.byMonth || {};
+        const expenseByMonth = variableExpensesRes.data.byMonth || {};
+        const monthSet = new Set([...Object.keys(incomeByMonth), ...Object.keys(expenseByMonth)]);
+        const months = Array.from(monthSet).sort();
+        const lastMonths = months.slice(-12);
+        const netData = lastMonths.map((m) => {
+          const incomeTotal = Number(incomeByMonth[m] || 0);
+          const expenseTotal = Number(expenseByMonth[m] || 0);
+          return incomeTotal - expenseTotal;
+        });
+        setMonthlyLabels(lastMonths);
+        setMonthlyData(netData);
+      }
+      
+      // Build recent transactions from all sources
+      const recent = [];
+      if (incomeRes?.data?.incomes) {
+        incomeRes.data.incomes.slice(0, 3).forEach(inc => {
+          const breakdown = Array.isArray(inc.dailyBreakdown) ? inc.dailyBreakdown[0] : null;
+          recent.push({
+            type: 'income',
+            name: breakdown?.source || inc.contributorName || 'Income',
+            amount: Number(inc.weeklyTotal || 0),
+            date: breakdown?.date || inc.createdAt
+          });
+        });
+      }
+      if (paymentsRes?.data?.payments) {
+        paymentsRes.data.payments.slice(0, 3).forEach(pmt => {
+          recent.push({
+            type: 'payment',
+            name: pmt.fixedExpenseId?.name || 'Payment',
+            amount: pmt.amount,
+            date: pmt.paymentDate
+          });
+        });
+      }
+      if (variableExpensesRes?.data?.expenses) {
+        variableExpensesRes.data.expenses.slice(0, 3).forEach(exp => {
+          recent.push({
+            type: 'expense',
+            name: exp.category || exp.description || 'Expense',
+            amount: exp.amount,
+            date: exp.date
+          });
+        });
+      }
+      recent.sort((a, b) => new Date(b.date) - new Date(a.date));
+      setRecentTransactions(recent.slice(0, 5));
+      
       setLoading(false);
     } catch (err) {
       console.error('[Dashboard] fetch error:', err);
@@ -83,63 +148,114 @@ export default function DashboardPage(){
   const handleLogout = ()=>{ logout(); navigate('/login'); };
 
   // Sample small dataset for the chart (if backend doesn't provide)
-  const chartData = Array.from({length:12}, (_,i)=> Math.round(Math.random()*1000));
+  const chartData = monthlyData.length > 0 ? monthlyData : Array.from({length:12}, (_,i)=> Math.round(Math.random()*1000));
+  
+  // Calculate available this month
+  const available = summary ? (summary.totalIncome - summary.totalExpenses - fixedExpensesTotal) : 0;
+  const availableThisMonth = available;
 
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">{t('Welcome back', 'Bienvenido')}{user?.name ? `, ${user.name}` : ''}</h1>
-            <p className="text-sm text-gray-500">{t('Household', 'Hogar')}: {user?.householdName || '\u2014'}</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{t('Welcome back', 'Bienvenido')}{user?.name ? `, ${user.name}` : ''}</h1>
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300">{t('Household', 'Hogar')}: {user?.householdName || '—'}</p>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <button 
               onClick={() => { console.log('[Dashboard] Manual refresh'); fetchData(); }} 
-              className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+              className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
             >
               {t('Refresh', 'Actualizar')}
             </button>
-            <button onClick={handleLogout} className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">{t('Logout', 'Cerrar sesi\u00f3n')}</button>
+            <button onClick={handleLogout} className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm">{t('Logout', 'Cerrar sesión')}</button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <MetricCard title={t('Total Income', 'Total de Ingresos')} value={summary ? `$${summary.totalIncome.toFixed(2)}` : '$0.00'} subtitle={t('This month', 'Este mes')} accent="bg-green-500" linkTo="/income" />
           <MetricCard title={t('Fixed Expenses', 'Gastos Fijos')} value={`$${fixedExpensesTotal.toFixed(2)}`} subtitle={t('Monthly bills', 'Facturas mensuales')} accent="bg-red-500" linkTo="/fixed-expenses" />
           <MetricCard title={t('Variable Expenses', 'Gastos Variables')} value={summary ? `$${summary.totalExpenses.toFixed(2)}` : '$0.00'} subtitle={t('Other spending', 'Otros gastos')} accent="bg-orange-500" linkTo="/expenses" />
-          {(() => {
-            const available = summary ? (summary.totalIncome - summary.totalExpenses - fixedExpensesTotal) : 0;
-            const isNegative = available < 0;
-            return (
-              <MetricCard 
-                title={t('Available', 'Disponible')} 
-                value={`$${available.toFixed(2)}`} 
-                subtitle={t('After all expenses', 'Después de todos los gastos')} 
-                accent={isNegative ? "bg-red-600" : "bg-blue-500"}
-                valueColor={isNegative ? "text-red-600" : "text-gray-800"}
-              />
-            );
-          })()}
+          <MetricCard 
+            title={t('Available This Month', 'Disponible Este Mes')} 
+            value={`$${availableThisMonth.toFixed(2)}`} 
+            subtitle={t('Monthly budget', 'Presupuesto mensual')} 
+            accent={availableThisMonth < 0 ? "bg-red-600" : "bg-blue-500"}
+            valueColor={availableThisMonth < 0 ? "text-red-600" : "text-gray-700 dark:text-gray-300"}
+          />
         </div>
 
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           <div className="lg:col-span-2">
             <SimpleBarChart data={chartData} labels={language === 'es' ? ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'] : ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']} />
           </div>
 
           <aside>
-            <div className="bg-white rounded-2xl p-4 shadow-md border border-gray-100">
-              <h3 className="text-sm font-medium text-gray-600 mb-3">{t('Recent Activity', 'Actividad Reciente')}</h3>
-              <ul className="space-y-3 text-sm text-gray-600">
-                <li className="flex justify-between"><span>Water Bill</span><span className="font-medium">$120</span></li>
-                <li className="flex justify-between"><span>Salary</span><span className="font-medium">$4,500</span></li>
-                <li className="flex justify-between"><span>Internet</span><span className="font-medium">$60</span></li>
-              </ul>
+            {/* Credit Debt Widget */}
+            {creditSummary && creditSummary.cardCount > 0 && (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700 mb-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300">{t('Credit Card Debt', 'Deuda de Tarjetas')}</h3>
+                  <a href="/credit-cards" className="text-xs text-pink-600 dark:text-pink-400 hover:text-pink-700">{t('View all', 'Ver todo')}</a>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{t('Total Debt', 'Deuda Total')}</span>
+                    <span className="text-lg font-bold text-red-600 dark:text-red-400">${creditSummary.totalDebt?.toFixed(2) || '0.00'}</span>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400 mb-1">
+                      <span>{t('Paid Off', 'Pagado')}</span>
+                      <span className="font-medium text-green-600 dark:text-green-400">{creditSummary.overallProgress || 0}%</span>
+                    </div>
+                    <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                      <div className="h-2 rounded-full bg-green-500 transition-all" style={{ width: `${creditSummary.overallProgress || 0}%` }} />
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      ${creditSummary.totalPaid?.toFixed(2) || '0.00'} {t('of', 'de')} ${creditSummary.totalOriginal?.toFixed(2) || '0.00'}
+                    </div>
+                  </div>
+                  {creditCards.length > 0 && creditCards[0].dueDay && (
+                    <div className="pt-2 border-t border-gray-200 dark:border-gray-600 flex justify-between text-xs">
+                      <span className="text-gray-600 dark:text-gray-400">{t('Next Payment Due', 'Próximo Pago')}</span>
+                      <span className="font-semibold text-orange-600 dark:text-orange-400">{t('Day', 'Día')} {creditCards[0].dueDay}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700">
+              <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-3">{t('Recent Activity', 'Actividad Reciente')}</h3>
+              {recentTransactions.length === 0 ? (
+                <ul className="space-y-3 text-sm text-gray-600 dark:text-gray-400">
+                  <li className="flex justify-between"><span>Water Bill</span><span className="font-medium">$120</span></li>
+                  <li className="flex justify-between"><span>Salary</span><span className="font-medium">$4,500</span></li>
+                  <li className="flex justify-between"><span>Internet</span><span className="font-medium">$60</span></li>
+                </ul>
+              ) : (
+                <ul className="space-y-3 text-sm">
+                  {recentTransactions.map((txn, idx) => (
+                    <li key={idx} className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${
+                          txn.type === 'income' ? 'bg-green-500' : 
+                          txn.type === 'payment' ? 'bg-blue-500' : 'bg-orange-500'
+                        }`} />
+                        <span className="text-gray-700 dark:text-gray-300">{txn.name}</span>
+                      </div>
+                      <span className={`font-medium ${
+                        txn.type === 'income' ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'
+                      }`}>${txn.amount.toFixed(2)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
-            <div className="bg-white rounded-2xl p-4 shadow-md border border-gray-100 mt-4">
-              <h3 className="text-sm font-medium text-gray-600 mb-3">{t('Fixed Expenses This Month', 'Gastos Fijos Este Mes')}</h3>
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700 mt-4">
+              <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-3">{t('Fixed Expenses This Month', 'Gastos Fijos Este Mes')}</h3>
               {(() => {
                 const paidTotal = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
                 const unpaidTotal = Math.max(0, fixedExpensesTotal - paidTotal);
@@ -147,25 +263,25 @@ export default function DashboardPage(){
                 return (
                   <div className="space-y-3">
                     <div>
-                      <div className="flex justify-between text-xs text-gray-600 mb-1">
+                      <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400 mb-1">
                         <span>{t('Paid', 'Pagado')}</span>
-                        <span className="font-medium text-green-600">${paidTotal.toFixed(2)}</span>
+                        <span className="font-medium text-green-600 dark:text-green-400">${paidTotal.toFixed(2)}</span>
                       </div>
-                      <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                      <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
                         <div className="h-2 rounded-full bg-green-500 transition-all" style={{ width: `${paymentPercent}%` }} />
                       </div>
-                      <div className="text-xs text-gray-500 mt-1">
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                         {paymentPercent}% {t('of', 'de')} ${fixedExpensesTotal.toFixed(2)}
                       </div>
                     </div>
-                    <div className="pt-2 border-t border-gray-200">
+                    <div className="pt-2 border-t border-gray-200 dark:border-gray-600">
                       <div className="flex justify-between text-xs">
-                        <span className="text-gray-600">{t('Remaining to Pay', 'Por Pagar')}</span>
-                        <span className={`font-semibold ${unpaidTotal > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                        <span className="text-gray-600 dark:text-gray-400">{t('Remaining to Pay', 'Por Pagar')}</span>
+                        <span className={`font-semibold ${unpaidTotal > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-green-600 dark:text-green-400'}`}>
                           ${unpaidTotal.toFixed(2)}
                         </span>
                       </div>
-                      <div className="text-xs text-gray-500 mt-1">
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                         {t('Total:', 'Total:')} ${fixedExpensesTotal.toFixed(2)}
                       </div>
                     </div>
@@ -174,13 +290,13 @@ export default function DashboardPage(){
               })()}
             </div>
 
-            <div className="bg-white rounded-2xl p-4 shadow-md border border-gray-100 mt-4">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700 mt-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-medium text-gray-600">{t('Goals & Funds', 'Metas y Fondos')}</h3>
-                <a href="/goals" className="text-xs text-teal-600 hover:text-teal-700">{t('View all', 'Ver todo')}</a>
+                <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300">{t('Goals & Funds', 'Metas y Fondos')}</h3>
+                <a href="/goals" className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700">{t('View all', 'Ver todo')}</a>
               </div>
               {goals.length === 0 ? (
-                <div className="text-xs text-gray-400 py-3 text-center">{t('No goals yet.', 'Sin objetivos aún.')}</div>
+                <div className="text-xs text-gray-400 dark:text-gray-500 py-3 text-center">{t('No goals yet.', 'Sin objetivos aún.')}</div>
               ) : (
                 <ul className="space-y-3">
                   {goals.slice(0, 3).map((goal) => {
@@ -188,12 +304,12 @@ export default function DashboardPage(){
                     const progress = goal.progressPercent != null ? goal.progressPercent : (goal.target > 0 ? Math.min(100, Math.round((goal.currentBalance / goal.target) * 100)) : null);
                     return (
                       <li key={key}>
-                        <div className="flex justify-between text-xs text-gray-600 mb-1">
-                          <span className="font-medium text-gray-700">{goal.name}</span>
+                        <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400 mb-1">
+                          <span className="font-medium text-gray-700 dark:text-gray-200">{goal.name}</span>
                           <span>{progress != null ? `${progress}%` : `$${Number(goal.currentBalance || 0).toFixed(0)}`}</span>
                         </div>
                         {goal.target > 0 && (
-                          <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                          <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
                             <div className="h-1.5 rounded-full bg-teal-500 transition-all" style={{ width: `${progress}%` }} />
                           </div>
                         )}
@@ -204,9 +320,9 @@ export default function DashboardPage(){
               )}
             </div>
 
-            <div className="bg-white rounded-2xl p-4 shadow-md border border-gray-100 mt-4">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700 mt-4">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-medium text-gray-600">{t('Household', 'Hogar')}</h3>
+                <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300">{t('Household', 'Hogar')}</h3>
                 <button 
                   onClick={() => navigate('/members')}
                   className="text-xs px-3 py-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
@@ -216,27 +332,27 @@ export default function DashboardPage(){
               </div>
               
               <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                      <span className="text-blue-600 text-sm">👥</span>
+                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                      <span className="text-blue-600 dark:text-blue-400 text-sm">👥</span>
                     </div>
                     <div>
-                      <div className="text-xs text-gray-500">{t('Members', 'Miembros')}</div>
-                      <div className="font-semibold text-gray-800">{household?.members?.length || 0}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{t('Members', 'Miembros')}</div>
+                      <div className="font-semibold text-gray-800 dark:text-gray-200">{household?.members?.length || 0}</div>
                     </div>
                   </div>
                 </div>
 
                 {pendingInvites.length > 0 && (
-                  <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                  <div className="flex items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-900 rounded-lg border border-yellow-200 dark:border-yellow-700">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-yellow-100 flex items-center justify-center">
-                        <span className="text-yellow-600 text-sm">✉️</span>
+                      <div className="w-8 h-8 rounded-full bg-yellow-100 dark:bg-yellow-800 flex items-center justify-center">
+                        <span className="text-yellow-600 dark:text-yellow-400 text-sm">✉️</span>
                       </div>
                       <div>
-                        <div className="text-xs text-gray-500">{t('Pending Invites', 'Invitaciones Pendientes')}</div>
-                        <div className="font-semibold text-gray-800">{pendingInvites.length}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">{t('Pending Invites', 'Invitaciones Pendientes')}</div>
+                        <div className="font-semibold text-gray-800 dark:text-gray-200">{pendingInvites.length}</div>
                       </div>
                     </div>
                   </div>
@@ -244,7 +360,7 @@ export default function DashboardPage(){
 
                 <button
                   onClick={() => navigate('/members')}
-                  className="w-full px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors text-sm font-medium"
+                  className="w-full px-4 py-2 bg-indigo-50 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-800 transition-colors text-sm font-medium"
                 >
                   {t('+ Invite Members', '+ Invitar Miembros')}
                 </button>

@@ -71,39 +71,39 @@ export default function ExpensesPage(){
     <Layout>
       <div className="max-w-4xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold">{t('Variable Expenses', 'Gastos Variables')}</h1>
-          <p className="text-sm text-gray-500">{t('Track your daily and weekly spending.', 'Registra tus gastos diarios y semanales.')}</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('Variable Expenses', 'Gastos Variables')}</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{t('Track your daily and weekly spending.', 'Registra tus gastos diarios y semanales.')}</p>
         </div>
 
         <ExpenseForm householdId={user?.householdId} onCreated={handleCreated} />
 
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
-            <h2 className="text-lg font-medium mb-3">{t('This week', 'Esta semana')}</h2>
+            <h2 className="text-lg font-medium mb-3 text-gray-900 dark:text-white">{t('This week', 'Esta semana')}</h2>
             <ExpenseList householdId={user?.householdId} loading={loading} entries={weekEntries} members={members} refresh={fetchCurrentMonth} />
           </div>
 
           <aside>
-            <h2 className="text-lg font-medium mb-3">{t('This month', 'Este mes')}</h2>
+            <h2 className="text-lg font-medium mb-3 text-gray-900 dark:text-white">{t('This month', 'Este mes')}</h2>
             <div className="space-y-4">
-              <div className="bg-white rounded-2xl p-4 shadow-md border border-gray-100">
+              <div className="bg-white dark:bg-gray-750 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-sm text-gray-500">{t('Total Spent', 'Total Gastado')}</div>
-                    <div className="text-2xl font-semibold text-gray-800">${monthTotal.toFixed(2)}</div>
-                    <div className="text-xs text-gray-400 mt-1">{t('This month', 'Este mes')}</div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">{t('Total Spent', 'Total Gastado')}</div>
+                    <div className="text-2xl font-semibold text-gray-700 dark:text-gray-300">${monthTotal.toFixed(2)}</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">{t('This month', 'Este mes')}</div>
                   </div>
                 </div>
               </div>
 
               {Object.keys(categoryTotals).length > 0 && (
-                <div className="bg-white rounded-2xl p-4 shadow-md border border-gray-100">
-                  <div className="text-sm text-gray-600 font-medium mb-3">{t('By Category', 'Por Categoría')}</div>
+                <div className="bg-white dark:bg-gray-750 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700">
+                  <div className="text-sm text-gray-600 dark:text-gray-400 font-medium mb-3">{t('By Category', 'Por Categoría')}</div>
                   <div className="space-y-2">
                     {Object.entries(categoryTotals).map(([cat, amount]) => (
                       <div key={cat} className="flex justify-between text-sm">
                         <span className="text-gray-600">{cat}</span>
-                        <span className="font-medium text-gray-800">${amount.toFixed(2)}</span>
+                        <span className="font-medium text-gray-700 dark:text-gray-300">${amount.toFixed(2)}</span>
                       </div>
                     ))}
                   </div>

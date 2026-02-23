@@ -93,7 +93,7 @@ export default function FixedExpenseList({ householdId, byGroup = {}, total = 0,
               <h3 className={`font-medium ${colorClass}`}>{group}</h3>
               <span className="text-sm font-semibold text-gray-700">${groupTotal.toFixed(2)}</span>
             </div>
-            <div className="bg-white rounded-2xl p-4 shadow-md border border-gray-100 space-y-3">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700 space-y-3">
               {expenses.map((e) => {
                 const key = e._id || e.id;
                 const displayName = language === 'es' && e.name_es ? e.name_es : e.name;
@@ -115,26 +115,28 @@ export default function FixedExpenseList({ householdId, byGroup = {}, total = 0,
 
                 return (
                   <div key={key} className={`p-3 rounded-lg border transition-colors ${
-                    isPaid ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
+                    isPaid 
+                      ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700' 
+                      : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600'
                   }`}>
                     <div className="flex justify-between items-start gap-3">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <div className="text-sm font-medium text-gray-700">{displayName}</div>
-                          {isPaid && <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">✓ {t('Paid', 'Pagado')}</span>}
+                        <div className="text-sm font-medium text-gray-900 dark:text-white">{displayName}</div>
+                        {isPaid && <span className="text-xs px-2 py-0.5 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-400 rounded-full font-medium">✓ {t('Paid', 'Pagado')}</span>}
                         </div>
-                        <div className="text-xs text-gray-500 mt-1">
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                           {t('Frequency', 'Frecuencia')}: <span className="capitalize">{t(e.frequency, e.frequency === 'weekly' ? 'Semanal' : e.frequency === 'biweekly' ? 'Quincenal' : 'Mensual')}</span>
                           {e.dueDay && ` • ${t('Due', 'Vence')}: ${t('Day', 'Día')} ${e.dueDay}`}
                         </div>
                         {paidAmount > 0 && !isPaid && (
-                          <div className="text-xs text-orange-600 mt-1">
+                          <div className="text-xs text-orange-600 dark:text-orange-400 mt-1">
                             {t('Paid', 'Pagado')}: ${paidAmount.toFixed(2)} / ${Number(e.amount).toFixed(2)}
                           </div>
                         )}
                       </div>
                       <div className="flex items-center space-x-2 text-right">
-                        <div className="text-sm font-semibold text-gray-800 min-w-fit">${Number(e.amount || 0).toFixed(2)}</div>
+                        <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 min-w-fit">${Number(e.amount || 0).toFixed(2)}</div>
                         <button
                           onClick={() => !isPaid && setMarkingPayment(e)}
                           disabled={isPaid}
@@ -158,11 +160,11 @@ export default function FixedExpenseList({ householdId, byGroup = {}, total = 0,
         );
       })}
 
-      <div className="bg-gradient-to-r from-red-50 to-orange-50 rounded-2xl p-6 border border-red-100 mt-6">
+      <div className="bg-gradient-to-r from-red-50 dark:from-red-900/20 to-orange-50 dark:to-orange-900/20 rounded-2xl p-6 border border-red-100 dark:border-red-700 mt-6">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-medium text-gray-600">{t('Total Monthly Fixed Expenses', 'Total de Gastos Fijos Mensuales')}</div>
-            <div className="text-3xl font-bold text-red-600">${total.toFixed(2)}</div>
+            <div className="text-sm font-medium text-gray-600 dark:text-gray-300">{t('Total Monthly Fixed Expenses', 'Total de Gastos Fijos Mensuales')}</div>
+            <div className="text-3xl font-bold text-red-600 dark:text-red-400">${total.toFixed(2)}</div>
           </div>
         </div>
       </div>

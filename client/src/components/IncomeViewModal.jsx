@@ -19,13 +19,13 @@ export default function IncomeViewModal({ title, entries = [], members = [], onC
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-gray-200 p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold">{title}</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{title}</h2>
             <button
               onClick={onClose}
-              className="text-2xl text-gray-400 hover:text-gray-600"
+              className="text-2xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
             >
               ✕
             </button>
@@ -34,7 +34,7 @@ export default function IncomeViewModal({ title, entries = [], members = [], onC
 
         <div className="p-6">
           {entries.length === 0 ? (
-            <div className="text-center text-gray-500 py-8">
+            <div className="text-center text-gray-500 dark:text-gray-400 py-8">
               {t('No income entries for this period', 'Sin entradas de ingresos para este período')}
             </div>
           ) : (
@@ -56,18 +56,18 @@ export default function IncomeViewModal({ title, entries = [], members = [], onC
                 const contributorText = e.contributorName || 'Unknown';
 
                 return (
-                  <div key={key} className="flex justify-between items-start bg-gray-50 p-4 rounded-lg border border-gray-100">
+                  <div key={key} className="flex justify-between items-start bg-gray-50 dark:bg-gray-700 p-4 rounded-lg border border-gray-100 dark:border-gray-600">
                     <div className="flex-1">
-                      <div className="text-sm font-medium text-gray-700">
-                        {sourceText} • <span className="text-indigo-600">{contributorText}</span>
+                      <div className="text-sm font-medium text-gray-900 dark:text-white">
+                        {sourceText} • <span className="text-indigo-600 dark:text-indigo-400">{contributorText}</span>
                       </div>
-                      <div className="text-xs text-gray-400 mt-1">
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                         {e.description ? `${e.description}` : ''}
                         {dateText && ` ${e.description ? '•' : ''} ${new Date(dateText).toLocaleDateString()}`}
                       </div>
                     </div>
                     <div className="text-right ml-4">
-                      <div className="text-lg font-semibold text-gray-800">
+                      <div className="text-lg font-semibold text-gray-900 dark:text-white">
                         ${Number(amountVal || 0).toFixed(2)}
                       </div>
                     </div>
@@ -78,9 +78,9 @@ export default function IncomeViewModal({ title, entries = [], members = [], onC
           )}
 
           {entries.length > 0 && (
-            <div className="mt-6 pt-6 border-t border-gray-200">
+            <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
               <div className="flex items-center justify-between">
-                <span className="text-gray-600 font-medium">
+                <span className="text-gray-600 dark:text-gray-400 font-medium">
                   {t('Total', 'Total')}:
                 </span>
                 <span className="text-2xl font-bold text-indigo-600">
@@ -99,10 +99,10 @@ export default function IncomeViewModal({ title, entries = [], members = [], onC
           )}
         </div>
 
-        <div className="sticky bottom-0 bg-white border-t border-gray-200 p-6">
+        <div className="sticky bottom-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-6">
           <button
             onClick={onClose}
-            className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+            className="w-full px-4 py-2 bg-indigo-600 dark:bg-indigo-700 text-white rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-800 transition-colors font-medium"
           >
             {t('Close', 'Cerrar')}
           </button>
