@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import api from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import EditGoalModal from './EditGoalModal';
+import AddGoalContributionModal from './AddGoalContributionModal';
 
 const typeColors = {
   Emergency: {
@@ -36,6 +37,7 @@ const typeLabel = (t, tp) =>
 export default function GoalList({ householdId, goals = [], totalMonthlyContribution = 0, loading = false, refresh }) {
   const { t } = useLanguage();
   const [editingGoal, setEditingGoal] = useState(null);
+  const [addingFundsTo, setAddingFundsTo] = useState(null);
 
   const handleDelete = async (goal) => {
     const id = goal._id || goal.id;
@@ -58,6 +60,24 @@ export default function GoalList({ householdId, goals = [], totalMonthlyContribu
     } catch (err) {
       console.error('[GoalList] patch error:', err);
       alert(err?.response?.data?.error || t('Failed to update', 'Error al actualizar'));
+    }
+  };
+
+  const handleAddFundsToGoal = (goal) => {
+    setAddingFundsTo(goal);
+  };
+
+  const handleSaveContribution = async (contributionData) => {
+    if (!householdId || !addingFundsTo) return console.error('[GoalList] missing householdId or goal');
+    try {
+      const goalId = addingFundsTo._id || addingFundsTo.id;
+      console.log('[GoalList] creating contribution', { goalId, ...contributionData });
+      await api.post(`/goal-contributions/${householdId}/${goalId}`, contributionData);
+      setAddingFundsTo(null);
+      refresh && refresh();
+    } catch (err) {
+      console.error('[GoalList] contribution error', err);
+      alert(err?.response?.data?.error || t('Failed to add contribution', 'Error al agregar fondos'));
     }
   };
 
@@ -99,6 +119,12 @@ export default function GoalList({ householdId, goals = [], totalMonthlyContribu
                 </div>
               </div>
               <div className="flex items-center gap-3 ml-4 shrink-0">
+                <button
+                  onClick={() => handleAddFundsToGoal(goal)}
+                  className="text-sm text-green-600 hover:text-green-700 transition-colors"
+                >
+                  {t('Add Funds', 'Agregar Fondos')}
+                </button>
                 <button
                   onClick={() => setEditingGoal(goal)}
                   className="text-sm text-indigo-600 hover:text-indigo-700 transition-colors"
@@ -169,6 +195,15 @@ export default function GoalList({ householdId, goals = [], totalMonthlyContribu
           goal={editingGoal}
           onSave={handleSaveEdit}
           onClose={() => setEditingGoal(null)}
+        />
+      )}
+
+      {addingFundsTo && (
+        <AddGoalContributionModal
+          goal={addingFundsTo}
+          householdId={householdId}
+          onSave={handleSaveContribution}
+          onClose={() => setAddingFundsTo(null)}
         />
       )}
     </div>

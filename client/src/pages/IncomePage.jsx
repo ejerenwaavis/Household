@@ -3,6 +3,8 @@ import Layout from '../components/Layout';
 import IncomeForm from '../components/IncomeForm';
 import IncomeList from '../components/IncomeList';
 import IncomeViewModal from '../components/IncomeViewModal';
+import IncomeSplitConfig from '../components/IncomeSplitConfig';
+import IncomeSplitExpectations from '../components/IncomeSplitExpectations';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../context/LanguageContext';
 import api from '../services/api';
@@ -14,6 +16,7 @@ export default function IncomePage(){
   const [members, setMembers] = useState([]);
   const [weeklyTotals, setWeeklyTotals] = useState([0,0,0,0]);
   const [monthTotal, setMonthTotal] = useState(0);
+  const [fixedExpensesTotal, setFixedExpensesTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [viewingWeek, setViewingWeek] = useState(null); // null, 1, 2, 3, 4, or 'month'
 
@@ -46,7 +49,17 @@ export default function IncomePage(){
     }
   };
 
-  useEffect(()=>{ fetchCurrentMonth(); fetchMembers(); }, [user, language]);
+  const fetchFixedExpenses = async () => {
+    if (!user?.householdId) return;
+    try {
+      const res = await api.get(`/fixed-expenses/${user.householdId}`);
+      setFixedExpensesTotal(res.data.total || 0);
+    } catch (err) {
+      console.error('[IncomePage] fetch fixed expenses error:', err);
+    }
+  };
+
+  useEffect(()=>{ fetchCurrentMonth(); fetchMembers(); fetchFixedExpenses(); }, [user, language]);
 
   const handleCreated = (newEntry) => {
     // Prepend to list for instant feedback
@@ -140,6 +153,24 @@ export default function IncomePage(){
                 </div>
               </div>
             </div>
+          </aside>
+        </div>
+
+        {/* Income Split Expectations and Configuration */}
+        <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <IncomeSplitExpectations 
+              householdId={user?.householdId}
+              fixedExpensesTotal={fixedExpensesTotal}
+              currentMonthIncome={entries}
+            />
+          </div>
+
+          <aside>
+            <IncomeSplitConfig 
+              householdId={user?.householdId}
+              onUpdate={fetchCurrentMonth}
+            />
           </aside>
         </div>
 

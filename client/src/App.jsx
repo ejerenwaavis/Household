@@ -8,6 +8,8 @@ import IncomePage from './pages/IncomePage';
 import ExpensesPage from './pages/ExpensesPage';
 import FixedExpensesPage from './pages/FixedExpensesPage';
 import GoalsPage from './pages/GoalsPage';
+import InviteAcceptPage from './pages/InviteAcceptPage';
+import MemberManagementPage from './pages/MemberManagementPage';
 import UnauthorizedPage from './pages/UnauthorizedPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -19,14 +21,18 @@ function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
-            <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-            <Route path="/dashboard/income" element={<ProtectedRoute><IncomePage /></ProtectedRoute>} />
-            <Route path="/income" element={<ProtectedRoute><IncomePage /></ProtectedRoute>} />
-            <Route path="/expenses" element={<ProtectedRoute><ExpensesPage /></ProtectedRoute>} />
-            <Route path="/fixed-expenses" element={<ProtectedRoute><FixedExpensesPage /></ProtectedRoute>} />
-            <Route path="/goals" element={<ProtectedRoute><GoalsPage /></ProtectedRoute>} />
+            <Route path="/invite/:token" element={<InviteAcceptPage />} />
             <Route path="/unauthorized" element={<UnauthorizedPage />} />
-            <Route path="/" element={<Navigate to="/dashboard" />} />
+            <Route element={<ProtectedRoute />}>
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/dashboard/income" element={<IncomePage />} />
+              <Route path="/income" element={<IncomePage />} />
+              <Route path="/expenses" element={<ExpensesPage />} />
+              <Route path="/fixed-expenses" element={<FixedExpensesPage />} />
+              <Route path="/goals" element={<GoalsPage />} />
+              <Route path="/members" element={<MemberManagementPage />} />
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            </Route>
           </Routes>
         </Router>
       </LanguageProvider>

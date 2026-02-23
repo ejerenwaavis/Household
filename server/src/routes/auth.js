@@ -33,9 +33,10 @@ router.post('/register', async (req, res, next) => {
     const household = await Household.create({
       householdId,
       householdName,
+      headOfHouseId: userId, // Set the creator as head of house
       currency: 'USD',
       language: 'en',
-      members: [{ userId, role: 'owner', name, joinedAt: new Date() }],
+      members: [{ userId, role: 'owner', name, email, joinedAt: new Date() }],
       subscription: {
         planId: 'free',
         status: 'active',

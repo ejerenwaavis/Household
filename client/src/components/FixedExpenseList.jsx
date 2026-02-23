@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import api from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import EditFixedExpenseModal from './EditFixedExpenseModal';
+import MarkPaymentModal from './MarkPaymentModal';
 
-export default function FixedExpenseList({ householdId, byGroup = {}, total = 0, loading = false, refresh }){
+export default function FixedExpenseList({ householdId, byGroup = {}, total = 0, payments = [], loading = false, refresh, currentMonth }){
   const { t, language } = useLanguage();
   const [editingExpense, setEditingExpense] = useState(null);
-  console.log('[FixedExpenseList] render byGroup:', Object.keys(byGroup), 'total:', total, 'loading:', loading);
+  const [markingPayment, setMarkingPayment] = useState(null);
+  console.log('[FixedExpenseList] render byGroup:', Object.keys(byGroup), 'total:', total, 'loading:', loading, 'payments:', payments.length);
 
   const handleDelete = async (expense) => {
     const id = expense._id || expense.id;
@@ -45,6 +47,19 @@ export default function FixedExpenseList({ householdId, byGroup = {}, total = 0,
     }
   };
 
+  const handleSavePayment = async (paymentData) => {
+    if (!householdId) return console.error('[FixedExpenseList] missing householdId for payment');
+    try {
+      console.log('[FixedExpenseList] creating payment', paymentData);
+      await api.post(`/fixed-expense-payments/${householdId}`, paymentData);
+      setMarkingPayment(null);
+      refresh && refresh();
+    } catch (err) {
+      console.error('[FixedExpenseList] payment error', err);
+      alert(err?.response?.data?.error || t('Failed to save payment', 'Error al guardar pago'));
+    }
+  };
+
   const categoryColors = {
     'Housing': 'text-blue-600',
     'Utilities': 'text-yellow-600',
@@ -78,24 +93,62 @@ export default function FixedExpenseList({ householdId, byGroup = {}, total = 0,
               <h3 className={`font-medium ${colorClass}`}>{group}</h3>
               <span className="text-sm font-semibold text-gray-700">${groupTotal.toFixed(2)}</span>
             </div>
-            <div className="bg-white rounded-2xl p-4 shadow-md border border-gray-100 space-y-2">
+            <div className="bg-white rounded-2xl p-4 shadow-md border border-gray-100 space-y-3">
               {expenses.map((e) => {
                 const key = e._id || e.id;
-                // Use translated name if available and language is Spanish
                 const displayName = language === 'es' && e.name_es ? e.name_es : e.name;
+                
+                // Find payments for this expense in current month
+                const expenseId = String(e._id || e.id);
+                const expensePayments = payments.filter(p => {
+                  // Handle both cases: fixedExpenseId could be a string or an object (due to populate)
+                  const paymentExpenseId = String((p.fixedExpenseId?._id || p.fixedExpenseId) || '');
+                  const matchesExpense = paymentExpenseId === expenseId;
+                  const matchesMonth = currentMonth ? p.monthPaid === currentMonth : true;
+                  return matchesExpense && matchesMonth;
+                });
+                const paidAmount = expensePayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+                const isPaid = paidAmount >= Number(e.amount);
+                const remaining = Math.max(0, Number(e.amount) - paidAmount);
+                
+                console.log('[FixedExpenseList] expense:', displayName, { expenseId, totalPayments: payments.length, matchingPayments: expensePayments.length, paidAmount, expenseAmount: Number(e.amount), isPaid });
+
                 return (
-                  <div key={key} className="flex justify-between items-center">
-                    <div>
-                      <div className="text-sm font-medium text-gray-700">{displayName}</div>
-                      <div className="text-xs text-gray-400">
-                        {t('Frequency', 'Frecuencia')}: <span className="capitalize">{t(e.frequency, e.frequency === 'weekly' ? 'Semanal' : e.frequency === 'biweekly' ? 'Quincenal' : 'Mensual')}</span>
-                        {e.dueDay && ` • ${t('Due', 'Vence')}: ${t('Day', 'Día')} ${e.dueDay}`}
+                  <div key={key} className={`p-3 rounded-lg border transition-colors ${
+                    isPaid ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
+                  }`}>
+                    <div className="flex justify-between items-start gap-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm font-medium text-gray-700">{displayName}</div>
+                          {isPaid && <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">✓ {t('Paid', 'Pagado')}</span>}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {t('Frequency', 'Frecuencia')}: <span className="capitalize">{t(e.frequency, e.frequency === 'weekly' ? 'Semanal' : e.frequency === 'biweekly' ? 'Quincenal' : 'Mensual')}</span>
+                          {e.dueDay && ` • ${t('Due', 'Vence')}: ${t('Day', 'Día')} ${e.dueDay}`}
+                        </div>
+                        {paidAmount > 0 && !isPaid && (
+                          <div className="text-xs text-orange-600 mt-1">
+                            {t('Paid', 'Pagado')}: ${paidAmount.toFixed(2)} / ${Number(e.amount).toFixed(2)}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                      <div className="text-sm font-semibold text-gray-800">${Number(e.amount || 0).toFixed(2)}</div>
-                      <button onClick={()=>handleEdit(e)} className="text-sm text-indigo-600">{t('Edit', 'Editar')}</button>
-                      <button onClick={()=>handleDelete(e)} className="text-sm text-red-600">{t('Delete', 'Eliminar')}</button>
+                      <div className="flex items-center space-x-2 text-right">
+                        <div className="text-sm font-semibold text-gray-800 min-w-fit">${Number(e.amount || 0).toFixed(2)}</div>
+                        <button
+                          onClick={() => !isPaid && setMarkingPayment(e)}
+                          disabled={isPaid}
+                          className={`text-xs px-2 py-1 rounded transition-colors ${
+                            isPaid
+                              ? 'bg-green-100 text-green-700 cursor-not-allowed opacity-75'
+                              : 'bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer'
+                          }`}
+                        >
+                          {isPaid ? t('Paid', 'Pagado') : t('Mark Paid', 'Marcar')}
+                        </button>
+                        <button onClick={()=>handleEdit(e)} className="text-xs text-indigo-600 hover:text-indigo-700">{t('Edit', 'Editar')}</button>
+                        <button onClick={()=>handleDelete(e)} className="text-xs text-red-600 hover:text-red-700">{t('Delete', 'Eliminar')}</button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -123,6 +176,14 @@ export default function FixedExpenseList({ householdId, byGroup = {}, total = 0,
           expense={editingExpense}
           onSave={handleSaveEdit}
           onClose={() => setEditingExpense(null)}
+        />
+      )}
+
+      {markingPayment && (
+        <MarkPaymentModal
+          expense={markingPayment}
+          onSave={handleSavePayment}
+          onClose={() => setMarkingPayment(null)}
         />
       )}
     </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import FixedExpenseForm from '../components/FixedExpenseForm';
 import FixedExpenseList from '../components/FixedExpenseList';
+import FixedExpensePaymentsWidget from '../components/FixedExpensePaymentsWidget';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../context/LanguageContext';
 import api from '../services/api';
@@ -12,6 +13,8 @@ export default function FixedExpensesPage(){
   const [expenses, setExpenses] = useState([]);
   const [byGroup, setByGroup] = useState({});
   const [total, setTotal] = useState(0);
+  const [payments, setPayments] = useState([]);
+  const [currentMonth, setCurrentMonth] = useState('');
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
 
@@ -25,6 +28,13 @@ export default function FixedExpensesPage(){
       setExpenses(res.data.expenses || []);
       setByGroup(res.data.byGroup || {});
       setTotal(res.data.total || 0);
+      
+      // Fetch payments for current month
+      const now = new Date();
+      const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      setCurrentMonth(monthStr);
+      const paymentsRes = await api.get(`/fixed-expense-payments/${user.householdId}?month=${monthStr}`);
+      setPayments(paymentsRes.data.payments || []);
     } catch (err) {
       console.error('[FixedExpensesPage] Failed to load expenses', err, err?.response?.data);
     } finally { setLoading(false); }
@@ -59,10 +69,22 @@ export default function FixedExpensesPage(){
 
         <div className="mt-8">
           <h2 className="text-lg font-medium mb-4">{t('Your Fixed Expenses', 'Tus Gastos Fijos')}</h2>
+          
+          {/* Payment summary widget */}
+          <div className="mb-6">
+            <FixedExpensePaymentsWidget
+              currentMonth={currentMonth}
+              payments={payments}
+              totalFixed={total}
+            />
+          </div>
+
           <FixedExpenseList 
             householdId={user?.householdId} 
             byGroup={byGroup}
             total={total}
+            payments={payments}
+            currentMonth={currentMonth}
             loading={loading}
             refresh={fetchExpenses}
             language={language}

@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { householdAuthMiddleware, authMiddleware } from '../middleware/auth.js';
 import Household from '../models/Household.js';
+import HouseholdInvite from '../models/HouseholdInvite.js';
+import User from '../models/User.js';
 import Income from '../models/Income.js';
 import Expense from '../models/Expense.js';
 
@@ -56,6 +58,295 @@ router.get('/:householdId/summary', authMiddleware, householdAuthMiddleware, asy
     });
   } catch (error) {
     next(error);
+  }
+});
+
+// POST: Send invite to join household (only head of house)
+router.post('/:householdId/invite', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId } = req.params;
+    const { email } = req.body;
+    const invitedBy = req.user.userId;
+
+    console.log('[household invite] incoming', { householdId, email, invitedBy });
+
+    if (!email) {
+      return res.status(400).json({ error: 'email required' });
+    }
+
+    // Get household
+    const household = await Household.findOne({ householdId });
+    if (!household) {
+      return res.status(404).json({ error: 'Household not found' });
+    }
+
+    // Check if user is head of house
+    // Support both headOfHouseId (new) and fallback to owner role in members array
+    const userIdStr = req.user.userId || req.user._id?.toString();
+    let isHeadOfHouse = household.headOfHouseId === userIdStr;
+    
+    // Fallback: if headOfHouseId is not set, check if user is owner in members array
+    if (!household.headOfHouseId) {
+      const ownerMember = household.members.find(m => m.role === 'owner' && m.userId === userIdStr);
+      isHeadOfHouse = !!ownerMember;
+      
+      // Auto-fix: set headOfHouseId for this household
+      if (isHeadOfHouse) {
+        household.headOfHouseId = userIdStr;
+        await household.save();
+        console.log('[household] Auto-set headOfHouseId for household:', householdId);
+      }
+    }
+    
+    if (!isHeadOfHouse) {
+      return res.status(403).json({ error: 'Only head of house can send invites' });
+    }
+
+    // Get inviter's name from household members
+    const inviterMember = household.members.find(m => m.userId === invitedBy);
+    const invitedByName = inviterMember?.name || 'Unknown';
+
+    // Check if invite already exists and is pending
+    const existingInvite = await HouseholdInvite.findOne({
+      householdId,
+      email,
+      status: 'pending',
+    });
+
+    if (existingInvite) {
+      // Refresh the token and expiration
+      existingInvite.updatedAt = new Date();
+      existingInvite.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      await existingInvite.save();
+      return res.json({ 
+        success: true, 
+        msg: 'Invite refreshed',
+        inviteToken: existingInvite.inviteToken 
+      });
+    }
+
+    // Create new invite
+    const invite = await HouseholdInvite.create({
+      householdId,
+      householdName: household.householdName,
+      invitedBy,
+      invitedByName,
+      email,
+    });
+
+    console.log('[household invite] created', { id: invite._id, email, token: invite.inviteToken });
+    
+    // TODO: Send email with invite link
+    // For now, just return the token (frontend can generate link)
+    res.status(201).json({ 
+      success: true, 
+      invite: {
+        id: invite._id,
+        email: invite.email,
+        inviteToken: invite.inviteToken,
+        expiresAt: invite.expiresAt,
+      }
+    });
+  } catch (err) {
+    console.error('[household invite] error', err && (err.stack || err.message || err));
+    next(err);
+  }
+});
+
+// GET: Get pending invites for household
+router.get('/:householdId/invites', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId } = req.params;
+
+    const invites = await HouseholdInvite.find({ householdId, status: 'pending' })
+      .sort({ createdAt: -1 });
+
+    res.json({ invites });
+  } catch (err) {
+    console.error('[household invites GET] error', err && (err.stack || err.message || err));
+    next(err);
+  }
+});
+
+// POST: Accept invite using token (called by invited user)
+router.post('/invite/accept/:inviteToken', authMiddleware, async (req, res, next) => {
+  try {
+    const { inviteToken } = req.params;
+    const userId = req.user.userId;
+    const userEmail = req.user.email;
+
+    console.log('[invite accept] incoming', { inviteToken, userId, userEmail });
+
+    // Find invite
+    const invite = await HouseholdInvite.findOne({ 
+      inviteToken,
+      status: 'pending',
+      expiresAt: { $gt: new Date() }
+    });
+
+    if (!invite) {
+      return res.status(404).json({ error: 'Invite not found or expired' });
+    }
+
+    // Verify email matches
+    if (invite.email.toLowerCase() !== userEmail.toLowerCase()) {
+      return res.status(403).json({ error: 'Email does not match invite' });
+    }
+
+    // Get household by householdId (UUID string)
+    const household = await Household.findOne({ householdId: invite.householdId });
+    if (!household) {
+      return res.status(404).json({ error: 'Household not found' });
+    }
+
+    // Get user details to add to household members
+    const user = await User.findOne({ userId });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Add user to household members if not already there
+    const memberExists = household.members.some(m => m.userId === userId);
+    if (!memberExists) {
+      household.members.push({
+        userId,
+        name: user.profile.name,
+        email: userEmail,
+        joinedAt: new Date(),
+      });
+      await household.save();
+    }
+
+    // Mark invite as accepted
+    invite.status = 'accepted';
+    invite.acceptedAt = new Date();
+    await invite.save();
+
+    console.log('[invite accept] success', { userId, householdId: household.householdId });
+    res.json({ 
+      success: true, 
+      household: { 
+        householdId: household.householdId,
+        householdName: household.householdName,
+        members: household.members
+      }
+    });
+  } catch (err) {
+    console.error('[invite accept] error', err && (err.stack || err.message || err));
+    next(err);
+  }
+});
+
+// POST: Decline invite
+router.post('/invite/decline/:inviteToken', authMiddleware, async (req, res, next) => {
+  try {
+    const { inviteToken } = req.params;
+
+    const invite = await HouseholdInvite.findOne({ inviteToken, status: 'pending' });
+    if (!invite) {
+      return res.status(404).json({ error: 'Invite not found' });
+    }
+
+    invite.status = 'declined';
+    await invite.save();
+
+    console.log('[invite decline] success', { inviteToken });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[invite decline] error', err && (err.stack || err.message || err));
+    next(err);
+  }
+});
+
+// DELETE: Cancel pending invite (head of house only)
+router.delete('/:householdId/invites/:inviteId', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId, inviteId } = req.params;
+    const userId = req.user._id;
+
+    // Get household and check if user is head of house
+    const household = await Household.findOne({ householdId });
+    if (!household) {
+      return res.status(404).json({ error: 'Household not found' });
+    }
+
+    // Check if user is head of house with fallback
+    const userIdStr = req.user.userId || req.user._id?.toString();
+    let isHeadOfHouse = household.headOfHouseId === userIdStr;
+    
+    if (!household.headOfHouseId) {
+      const ownerMember = household.members.find(m => m.role === 'owner' && m.userId === userIdStr);
+      isHeadOfHouse = !!ownerMember;
+      if (isHeadOfHouse) {
+        household.headOfHouseId = userIdStr;
+        await household.save();
+      }
+    }
+    
+    if (!isHeadOfHouse) {
+      return res.status(403).json({ error: 'Only head of house can cancel invites' });
+    }
+
+    // Find and delete the invite
+    const invite = await HouseholdInvite.findById(inviteId);
+    if (!invite || invite.householdId !== householdId) {
+      return res.status(404).json({ error: 'Invite not found' });
+    }
+
+    await HouseholdInvite.findByIdAndDelete(inviteId);
+
+    console.log('[invite cancel] success', { inviteId, householdId });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[invite cancel] error', err && (err.stack || err.message || err));
+    next(err);
+  }
+});
+
+// DELETE: Remove member from household (head of house only)
+router.delete('/:householdId/members/:memberId', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId, memberId } = req.params;
+    const userId = req.user._id;
+
+    // Get household and check if user is head of house
+    const household = await Household.findOne({ householdId });
+    if (!household) {
+      return res.status(404).json({ error: 'Household not found' });
+    }
+
+    // Check if user is head of house with fallback
+    const userIdStr = req.user.userId || req.user._id?.toString();
+    let isHeadOfHouse = household.headOfHouseId === userIdStr;
+    
+    if (!household.headOfHouseId) {
+      const ownerMember = household.members.find(m => m.role === 'owner' && m.userId === userIdStr);
+      isHeadOfHouse = !!ownerMember;
+      if (isHeadOfHouse) {
+        household.headOfHouseId = userIdStr;
+        await household.save();
+      }
+    }
+    
+    if (!isHeadOfHouse) {
+      return res.status(403).json({ error: 'Only head of house can remove members' });
+    }
+
+    // Don't allow removing the owner
+    const memberToRemove = household.members.find(m => m.userId?.toString() === memberId);
+    if (memberToRemove?.role === 'owner') {
+      return res.status(403).json({ error: 'Cannot remove household owner' });
+    }
+
+    // Remove member from household
+    household.members = household.members.filter(m => m.userId?.toString() !== memberId);
+    await household.save();
+
+    console.log('[member remove] success', { memberId, householdId });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[member remove] error', err && (err.stack || err.message || err));
+    next(err);
   }
 });
 
