@@ -6,6 +6,7 @@ import authRouter from './routes/auth.js';
 import householdRouter from './routes/household.js';
 import incomeRouter from './routes/income.js';
 import expenseRouter from './routes/expense.js';
+import fixedExpenseRouter from './routes/fixedExpense.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -52,6 +53,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/households', householdRouter);
 app.use('/api/income', incomeRouter);
 app.use('/api/expenses', expenseRouter);
+app.use('/api/fixed-expenses', fixedExpenseRouter);
 
 // Error Handler
 app.use((err, req, res, next) => {

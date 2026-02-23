@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 const expenseSchema = new mongoose.Schema({
   householdId: { type: String, required: true, index: true },
   userId: { type: String, required: true },
+  contributorName: { type: String, default: 'Unknown' },
   amount: { type: Number, required: true, min: 0 },
   category: { type: String, required: true },
   description: { type: String, required: true },

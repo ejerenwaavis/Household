@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 const incomeSchema = new mongoose.Schema({
   householdId: { type: String, required: true, index: true },
   userId: { type: String, required: true },
+  contributorName: { type: String, default: 'Unknown' },
   week: { type: Number, min: 1, max: 4 },
   month: { type: String, required: true, index: true },
   dailyBreakdown: [{

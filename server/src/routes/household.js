@@ -30,16 +30,17 @@ router.get('/:householdId/summary', authMiddleware, householdAuthMiddleware, asy
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const monthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
 
-    // Get income totals
+    // Get income totals - query by month string instead of date range
     const incomeData = await Income.aggregate([
-      { $match: { householdId, date: { $gte: monthStart, $lte: monthEnd } } },
-      { $group: { _id: null, total: { $sum: '$amount' } } },
+      { $match: { householdId, month: monthStr } },
+      { $group: { _id: null, total: { $sum: '$weeklyTotal' } } },
     ]);
 
-    // Get expense totals
+    // Get expense totals - query by date range in dailyBreakdown
     const expenseData = await Expense.aggregate([
-      { $match: { householdId, date: { $gte: monthStart, $lte: monthEnd } } },
+      { $match: { householdId, createdAt: { $gte: monthStart, $lte: monthEnd } } },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ]);
 
@@ -48,7 +49,7 @@ router.get('/:householdId/summary', authMiddleware, householdAuthMiddleware, asy
 
     res.json({
       householdId,
-      month: monthStart.toISOString().slice(0, 7),
+      month: monthStr,
       totalIncome,
       totalExpenses,
       balance: totalIncome - totalExpenses,
