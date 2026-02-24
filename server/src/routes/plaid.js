@@ -7,7 +7,9 @@ import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import PlaidService from '../services/plaidService.js';
 import LinkedAccount from '../models/LinkedAccount.js';
+import PlaidTransaction from '../models/PlaidTransaction.js';
 import User from '../models/User.js';
+import { handlePlaidWebhook } from '../webhooks/plaidWebhook.js';
 
 const router = Router();
 
@@ -296,6 +298,180 @@ router.post('/set-default/:accountId', authMiddleware, async (req, res, next) =>
   } catch (error) {
     console.error('[Plaid Route] Error setting default account:', error);
     res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /plaid/transactions
+ * Get transactions for all linked accounts (paginated)
+ */
+router.get('/transactions', authMiddleware, async (req, res, next) => {
+  try {
+    const { householdId } = req.user;
+    const { accountId, month, limit = 50, offset = 0 } = req.query;
+
+    console.log('[Plaid Route] Fetching transactions', { householdId, accountId, month, limit, offset });
+
+    // Build filter
+    const filter = { householdId };
+    if (accountId) {
+      filter.linkedAccountId = accountId;
+    }
+    if (month) {
+      // Filter by month (YYYY-MM format)
+      const [year, monthNum] = month.split('-');
+      const startDate = new Date(year, monthNum - 1, 1);
+      const endDate = new Date(year, monthNum, 0, 23, 59, 59);
+      filter.date = { $gte: startDate, $lte: endDate };
+    }
+
+    // Get total count
+    const total = await PlaidTransaction.countDocuments(filter);
+
+    // Get paginated transactions
+    const transactions = await PlaidTransaction.find(filter)
+      .sort({ date: -1 })
+      .limit(parseInt(limit))
+      .skip(parseInt(offset))
+      .lean();
+
+    res.json({
+      transactions,
+      pagination: {
+        total,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        hasMore: parseInt(offset) + parseInt(limit) < total
+      }
+    });
+  } catch (error) {
+    console.error('[Plaid Route] Error fetching transactions:', error);
+    res.status(400).json({ 
+      error: error.message,
+      code: 'PLAID_TRANSACTIONS_ERROR'
+    });
+  }
+});
+
+/**
+ * GET /plaid/transactions/:transactionId
+ * Get a specific transaction
+ */
+router.get('/transactions/:transactionId', authMiddleware, async (req, res, next) => {
+  try {
+    const { transactionId } = req.params;
+    const { householdId } = req.user;
+
+    const transaction = await PlaidTransaction.findOne({
+      _id: transactionId,
+      householdId
+    });
+
+    if (!transaction) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+
+    res.json({ transaction });
+  } catch (error) {
+    console.error('[Plaid Route] Error fetching transaction:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * PATCH /plaid/transactions/:transactionId
+ * Update transaction (categorization, reconciliation, etc.)
+ */
+router.patch('/transactions/:transactionId', authMiddleware, async (req, res, next) => {
+  try {
+    const { transactionId } = req.params;
+    const { householdId } = req.user;
+    const { userCategory, isReconciled, reconcilationNotes } = req.body;
+
+    const transaction = await PlaidTransaction.findOneAndUpdate(
+      { _id: transactionId, householdId },
+      {
+        ...(userCategory && { userCategory }),
+        ...(isReconciled !== undefined && { isReconciled }),
+        ...(reconcilationNotes && { reconcilationNotes }),
+        updatedAt: new Date()
+      },
+      { new: true }
+    );
+
+    if (!transaction) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+
+    res.json({
+      message: 'Transaction updated',
+      transaction
+    });
+  } catch (error) {
+    console.error('[Plaid Route] Error updating transaction:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /plaid/transactions-summary
+ * Get transaction summary/statistics
+ */
+router.get('/transactions-summary', authMiddleware, async (req, res, next) => {
+  try {
+    const { householdId } = req.user;
+    const { month } = req.query;
+
+    const filter = { householdId };
+    if (month) {
+      const [year, monthNum] = month.split('-');
+      const startDate = new Date(year, monthNum - 1, 1);
+      const endDate = new Date(year, monthNum, 0, 23, 59, 59);
+      filter.date = { $gte: startDate, $lte: endDate };
+    }
+
+    // Get aggregated statistics
+    const summary = await PlaidTransaction.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: '$primaryCategory',
+          count: { $sum: 1 },
+          total: { $sum: '$amount' },
+          avg: { $avg: '$amount' }
+        }
+      },
+      { $sort: { total: -1 } }
+    ]);
+
+    res.json({ summary });
+  } catch (error) {
+    console.error('[Plaid Route] Error fetching summary:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /plaid/webhook
+ * Webhook endpoint for Plaid real-time updates
+ * Receives notifications about transactions, account changes, and errors
+ * NOTE: Does NOT require authentication - Plaid sends directly to this endpoint
+ */
+router.post('/webhook', async (req, res, next) => {
+  try {
+    console.log('[Plaid Webhook] Received webhook event:', {
+      type: req.body.webhook_type,
+      code: req.body.webhook_code,
+      itemId: req.body.item_id
+    });
+
+    // Validate webhook is from Plaid (in production, verify signature)
+    // For now, we trust that Plaid is sending to our private endpoint
+    
+    await handlePlaidWebhook(req, res);
+  } catch (error) {
+    console.error('[Plaid Webhook] Error processing webhook:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

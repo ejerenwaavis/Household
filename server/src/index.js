@@ -20,6 +20,9 @@ import {
 } from './middleware/securityHeaders.js';
 import swaggerConfig from './config/swagger.js';
 
+// Import background jobs
+import { initializeTransactionSyncJob } from './services/transactionSyncService.js';
+
 // Import routes
 import authRouter from './routes/auth.js';
 import householdRouter from './routes/household.js';
@@ -35,6 +38,7 @@ import cardStatementRouter from './routes/cardStatement.js';
 import debtPaymentRouter from './routes/debtPayment.js';
 import creditCardStatementRouter from './routes/creditCardStatement.js';
 import taskReminderRouter from './routes/taskReminder.js';
+import plaidRouter from './routes/plaid.js';
 
 // Import models
 import Household from './models/Household.js';
@@ -87,7 +91,16 @@ app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(specs, {
 // Database Connection
 // ============================================================
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/household')
-  .then(() => console.log('✅ MongoDB connected'))
+  .then(() => {
+    console.log('✅ MongoDB connected');
+    
+    // Initialize background jobs after database connection
+    try {
+      initializeTransactionSyncJob();
+    } catch (err) {
+      console.error('❌ Failed to initialize transaction sync job:', err.message);
+    }
+  })
   .catch((error) => {
     console.error('❌ MongoDB connection error:', error.message);
     process.exit(1);
@@ -128,6 +141,7 @@ app.use('/api/card-statements', createLimiter, cardStatementRouter);
 app.use('/api/debt-payments', createLimiter, debtPaymentRouter);
 app.use('/api/credit-card-statements', createLimiter, creditCardStatementRouter);
 app.use('/api/tasks', createLimiter, taskReminderRouter);
+app.use('/api/plaid', createLimiter, plaidRouter);
 
 // ============================================================
 // Development-only Routes (strict limiting)
