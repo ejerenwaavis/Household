@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { householdAuthMiddleware, authMiddleware } from '../middleware/auth.js';
 import Expense from '../models/Expense.js';
+import Household from '../models/Household.js';
 import { translateText } from '../services/translationService.js';
 
 const router = Router({ mergeParams: true });
@@ -13,6 +14,25 @@ router.post('/:householdId', authMiddleware, householdAuthMiddleware, async (req
 
     if (!amount || !category) {
       return res.status(400).json({ error: 'Amount and category required' });
+    }
+
+    // Fetch household to check user role and get member info
+    const household = await Household.findOne({ householdId });
+    if (!household) {
+      return res.status(404).json({ error: 'Household not found' });
+    }
+
+    const currentMember = household.members.find(m => m.userId === req.user.userId);
+    if (!currentMember) {
+      return res.status(403).json({ error: 'User is not a member of this household' });
+    }
+
+    // Check permissions: only owners, co-owners and managers can add expenses on behalf of other members
+    const isOwnerOrManagerRole = ['owner', 'co-owner', 'manager'].includes(currentMember.role);
+    
+    // If contributorName is provided and different from current user, check permissions
+    if (contributorName && contributorName !== currentMember.name && !isOwnerOrManagerRole) {
+      return res.status(403).json({ error: 'Only managers and owners can add expenses for other members' });
     }
 
     // Use custom date if provided, else current date
@@ -31,7 +51,7 @@ router.post('/:householdId', authMiddleware, householdAuthMiddleware, async (req
     const expense = await Expense.create({
       householdId,
       userId: req.user.userId,
-      contributorName: contributorName || 'Unknown',
+      contributorName: contributorName || currentMember.name,
       amount: Number(amount),
       category,
       description: description || '',
@@ -41,7 +61,7 @@ router.post('/:householdId', authMiddleware, householdAuthMiddleware, async (req
       source: 'manual',
     });
 
-    console.log('[expense POST] created', expense && { id: expense._id, month: expense.month, week: expense.week });
+    console.log('[expense POST] created', expense && { id: expense._id, month: expense.month, week: expense.week, contributor: expense.contributorName, userId: expense.userId });
     res.status(201).json({ id: expense._id, expense });
   } catch (error) {
     next(error);

@@ -5,6 +5,7 @@ import IncomeList from '../components/IncomeList';
 import IncomeViewModal from '../components/IncomeViewModal';
 import IncomeSplitConfig from '../components/IncomeSplitConfig';
 import IncomeSplitExpectations from '../components/IncomeSplitExpectations';
+import HouseholdMembersWidget from '../components/HouseholdMembersWidget';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../context/LanguageContext';
 import api from '../services/api';
@@ -166,10 +167,14 @@ export default function IncomePage(){
             />
           </div>
 
-          <aside>
+          <aside className="space-y-6">
             <IncomeSplitConfig 
               householdId={user?.householdId}
               onUpdate={fetchCurrentMonth}
+            />
+            
+            <HouseholdMembersWidget 
+              householdId={user?.householdId}
             />
           </aside>
         </div>

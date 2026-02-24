@@ -2,6 +2,25 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
+import helmet from 'helmet';
+import swaggerUi from 'swagger-ui-express';
+import swaggerJsdoc from 'swagger-jsdoc';
+
+// Import security middleware
+import { 
+  generalLimiter, 
+  authLimiter, 
+  createLimiter,
+  strictLimiter
+} from './middleware/rateLimiter.js';
+import { 
+  securityHeaders, 
+  corsConfig, 
+  sanitizeInput 
+} from './middleware/securityHeaders.js';
+import swaggerConfig from './config/swagger.js';
+
+// Import routes
 import authRouter from './routes/auth.js';
 import householdRouter from './routes/household.js';
 import incomeRouter from './routes/income.js';
@@ -14,6 +33,8 @@ import goalContributionRouter from './routes/goalContribution.js';
 import creditCardRouter from './routes/creditCard.js';
 import cardStatementRouter from './routes/cardStatement.js';
 import debtPaymentRouter from './routes/debtPayment.js';
+
+// Import models
 import Household from './models/Household.js';
 import Goal from './models/Goal.js';
 import IncomeSplit from './models/IncomeSplit.js';
@@ -27,11 +48,42 @@ import DebtPayment from './models/DebtPayment.js';
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
-app.use(express.json());
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173' }));
+// ============================================================
+// Security Middleware Stack (in correct order)
+// ============================================================
 
+// 1. Security headers
+app.use(securityHeaders);
+
+// 2. Helmet - comprehensive security headers
+app.use(helmet({ contentSecurityPolicy: false }));
+
+// 3. CORS with security config
+app.use(cors(corsConfig));
+
+// 4. Body parsing with size limits
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// 5. Input sanitization
+app.use(sanitizeInput);
+
+// 6. General rate limiting for all routes
+app.use(generalLimiter);
+
+// ============================================================
+// Swagger/OpenAPI Documentation
+// ============================================================
+
+const specs = swaggerJsdoc(swaggerConfig);
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(specs, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'Household Finance API'
+}));
+
+// ============================================================
 // Database Connection
+// ============================================================
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/household')
   .then(() => console.log('✅ MongoDB connected'))
   .catch((error) => {
@@ -39,13 +91,44 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/household')
     process.exit(1);
   });
 
-// Health Check
+// ============================================================
+// Public Routes (Health check, not rate limited for monitoring)
+// ============================================================
+
 app.get('/health', (req, res) => {
   res.json({ status: 'Server running', timestamp: new Date().toISOString() });
 });
 
-// Dev Only: Seed Goals from Notion data
-app.post('/api/dev/seed-goals', async (req, res) => {
+// ============================================================
+// Auth Routes (strict rate limiting)
+// ============================================================
+
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth', authRouter);
+
+// ============================================================
+// Protected Routes (with appropriate rate limiting)
+// ============================================================
+
+// Household routes - general limiting
+app.use('/api/households', generalLimiter, householdRouter);
+
+// CRUD operations - moderate limiting
+app.use('/api/income', createLimiter, incomeRouter);
+app.use('/api/income-splits', createLimiter, incomeSplitRouter);
+app.use('/api/expenses', createLimiter, expenseRouter);
+app.use('/api/fixed-expenses', createLimiter, fixedExpenseRouter);
+app.use('/api/fixed-expense-payments', createLimiter, fixedExpensePaymentRouter);
+app.use('/api/goals', createLimiter, goalRouter);
+app.use('/api/goal-contributions', createLimiter, goalContributionRouter);
+app.use('/api/credit-cards', createLimiter, creditCardRouter);
+app.use('/api/card-statements', createLimiter, cardStatementRouter);
+app.use('/api/debt-payments', createLimiter, debtPaymentRouter);
+
+// ============================================================
+// Development-only Routes (strict limiting)
+// ============================================================
+app.post('/api/dev/seed-goals', strictLimiter, async (req, res) => {
   if (process.env.NODE_ENV !== 'development') {
     return res.status(403).json({ error: 'Not allowed in production' });
   }
@@ -97,7 +180,7 @@ app.post('/api/dev/seed-goals', async (req, res) => {
 });
 
 // Dev Only: Seed Income Splits (60/40 split for head of house + spouse)
-app.post('/api/dev/seed-income-splits', async (req, res) => {
+app.post('/api/dev/seed-income-splits', strictLimiter, async (req, res) => {
   if (process.env.NODE_ENV !== 'development') {
     return res.status(403).json({ error: 'Not allowed in production' });
   }
@@ -164,7 +247,7 @@ app.post('/api/dev/seed-income-splits', async (req, res) => {
 });
 
 // Dev Only: Clear Database (remove in production)
-app.post('/api/dev/clear-db', async (req, res) => {
+app.post('/api/dev/clear-db', strictLimiter, async (req, res) => {
   if (process.env.NODE_ENV !== 'development') {
     return res.status(403).json({ error: 'Not allowed in production' });
   }
@@ -184,7 +267,7 @@ app.post('/api/dev/clear-db', async (req, res) => {
 });
 
 // Dev Only: Master Seed Endpoint - Comprehensive test data
-app.post('/api/dev/seed-all', async (req, res) => {
+app.post('/api/dev/seed-all', strictLimiter, async (req, res) => {
   if (process.env.NODE_ENV !== 'development') {
     return res.status(403).json({ error: 'Not allowed in production' });
   }
@@ -381,27 +464,54 @@ app.post('/api/dev/seed-all', async (req, res) => {
   }
 });
 
-// Routes
-app.use('/api/auth', authRouter);
-app.use('/api/households', householdRouter);
-app.use('/api/income', incomeRouter);
-app.use('/api/income-splits', incomeSplitRouter);
-app.use('/api/expenses', expenseRouter);
-app.use('/api/fixed-expenses', fixedExpenseRouter);
-app.use('/api/fixed-expense-payments', fixedExpensePaymentRouter);
-app.use('/api/goals', goalRouter);
-app.use('/api/goal-contributions', goalContributionRouter);
-app.use('/api/credit-cards', creditCardRouter);
-app.use('/api/card-statements', cardStatementRouter);
-app.use('/api/debt-payments', debtPaymentRouter);
+// Dev Only: Test Email Configuration
+app.post('/api/dev/test-email', strictLimiter, async (req, res) => {
+  if (process.env.NODE_ENV !== 'development') {
+    return res.status(403).json({ error: 'Not allowed in production' });
+  }
 
-// Error Handler
+  try {
+    const { testEmail } = req.body;
+    if (!testEmail) {
+      return res.status(400).json({ error: 'testEmail is required' });
+    }
+
+    // Import email service
+    const { testEmailConfiguration } = await import('./services/emailService.js');
+    const result = await testEmailConfiguration(testEmail);
+
+    res.json(result);
+  } catch (error) {
+    console.error('[test-email] error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// Error Handler (with security in mind - don't leak sensitive info)
+// ============================================================
+
 app.use((err, req, res, next) => {
   console.error('Error:', err.message);
+  
+  // Don't leak sensitive information in production
+  const message = process.env.NODE_ENV === 'production' 
+    ? 'Internal server error'
+    : err.message;
+  
   res.status(err.status || 500).json({ 
-    error: err.message || 'Internal server error',
+    error: message,
+    // Only include stack trace in development
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
+});
+
+// ============================================================
+// 404 Handler
+// ============================================================
+
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found' });
 });
 
 app.listen(PORT, () => {

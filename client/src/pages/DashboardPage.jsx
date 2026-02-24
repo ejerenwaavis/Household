@@ -1,6 +1,8 @@
 import Layout from '../components/Layout';
 import MetricCard from '../components/MetricCard';
-import SimpleBarChart from '../components/SimpleBarChart';
+import SpendingByCategoryWidget from '../components/SpendingByCategoryWidget';
+import PendingTasksWidget from '../components/PendingTasksWidget';
+import MemberDetailsModal from '../components/MemberDetailsModal';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../context/LanguageContext';
@@ -23,35 +25,51 @@ export default function DashboardPage(){
   const [loading, setLoading] = useState(true);
   const [household, setHousehold] = useState(null);
   const [pendingInvites, setPendingInvites] = useState([]);
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [expensesData, setExpensesData] = useState([]);
 
   const fetchData = useCallback(async () => {
-    if (!user?.householdId) return;
-    console.log('[Dashboard] Fetching data...');
+    if (!user?.householdId) {
+      console.log('[Dashboard] fetchData called but no user.householdId, skipping');
+      return;
+    }
+    console.log('[Dashboard] FETCHING DATA - householdId:', user.householdId, 'householdName:', user.householdName);
     try {
       const now = new Date();
       const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      console.log('[Dashboard] Making API calls with householdId:', user.householdId);
       
       const [summaryRes, expensesRes, paymentsRes, goalsRes, creditCardsRes, incomeRes, variableExpensesRes] = await Promise.all([
-        api.get(`/households/${user.householdId}/summary`).catch(err => { console.error('Summary load failed', err); return null; }),
-        api.get(`/fixed-expenses/${user.householdId}`).catch(err => { console.error('Fixed expenses load failed', err); return null; }),
-        api.get(`/fixed-expense-payments/${user.householdId}?month=${monthStr}`).catch(err => { console.error('Payments load failed', err); return null; }),
-        api.get(`/goals/${user.householdId}`).catch(err => { console.error('Goals load failed', err); return null; }),
-        api.get(`/credit-cards/${user.householdId}`).catch(err => { console.error('Credit cards load failed', err); return null; }),
-        api.get(`/income/${user.householdId}`).catch(err => { console.error('Income load failed', err); return null; }),
-        api.get(`/expenses/${user.householdId}`).catch(err => { console.error('Variable expenses load failed', err); return null; }),
+        api.get(`/households/${user.householdId}/summary`).catch(err => { console.error('[Dashboard] Summary failed for householdId:', user.householdId, err.response?.status, err.message); return null; }),
+        api.get(`/fixed-expenses/${user.householdId}`).catch(err => { console.error('[Dashboard] Fixed expenses failed for householdId:', user.householdId, err.response?.status, err.message); return null; }),
+        api.get(`/fixed-expense-payments/${user.householdId}?month=${monthStr}`).catch(err => { console.error('[Dashboard] Payments failed for householdId:', user.householdId, err.response?.status, err.message); return null; }),
+        api.get(`/goals/${user.householdId}`).catch(err => { console.error('[Dashboard] Goals failed for householdId:', user.householdId, err.response?.status, err.message); return null; }),
+        api.get(`/credit-cards/${user.householdId}`).catch(err => { console.error('[Dashboard] Credit cards failed for householdId:', user.householdId, err.response?.status, err.message); return null; }),
+        api.get(`/income/${user.householdId}`).catch(err => { console.error('[Dashboard] Income failed for householdId:', user.householdId, err.response?.status, err.message); return null; }),
+        api.get(`/expenses/${user.householdId}`).catch(err => { console.error('[Dashboard] Variable expenses failed for householdId:', user.householdId, err.response?.status, err.message); return null; }),
       ]);
       
       // Also fetch household details to get members list and pending invites
       const [householdRes, invitesRes] = await Promise.all([
         api.get(`/households/${user.householdId}`).catch(err => { 
-          console.error('Household load failed', err); 
+          console.error('[Dashboard] Household fetch failed for householdId:', user.householdId, err.response?.status, err.message); 
           return null; 
         }),
         api.get(`/households/${user.householdId}/invites`).catch(err => {
-          console.error('Invites load failed', err);
+          console.error('[Dashboard] Invites fetch failed for householdId:', user.householdId, err.response?.status, err.message);
           return null;
         })
       ]);
+      
+      console.log('[Dashboard] API responses received:', {
+        summary: !!summaryRes?.data,
+        expenses: !!expensesRes?.data,
+        payments: !!paymentsRes?.data,
+        goals: !!goalsRes?.data,
+        creditCards: !!creditCardsRes?.data,
+        household: !!householdRes?.data,
+        invites: !!invitesRes?.data
+      });
       
       if (summaryRes?.data) setSummary(summaryRes.data);
       if (expensesRes?.data) setFixedExpensesTotal(expensesRes.data.total || 0);
@@ -66,6 +84,7 @@ export default function DashboardPage(){
       }
       if (householdRes?.data) setHousehold(householdRes.data);
       if (invitesRes?.data) setPendingInvites(invitesRes.data.invites || []);
+      if (variableExpensesRes?.data) setExpensesData(variableExpensesRes.data.expenses || []);
       
       // Build chart data from income and expenses (net per month)
       if (incomeRes?.data && variableExpensesRes?.data) {
@@ -126,11 +145,19 @@ export default function DashboardPage(){
     }
   }, [user?.householdId]);
 
-  // Initial load
+  // Initial load and refetch when household ID changes
   useEffect(() => {
-    console.log('[Dashboard] Initial load effect');
+    console.log('[Dashboard] useEffect triggered - householdId:', user?.householdId, 'householdName:', user?.householdName);
+    // Clear data when household changes
+    setSummary(null);
+    setHousehold(null);
+    setPendingInvites([]);
+    setPayments([]);
+    setMonthlyData([]);
+    setExpensesData([]);
+    
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, user?.householdId]);
 
   // Refetch data when page comes back into focus
   useEffect(() => {
@@ -147,9 +174,29 @@ export default function DashboardPage(){
 
   const handleLogout = ()=>{ logout(); navigate('/login'); };
 
-  // Sample small dataset for the chart (if backend doesn't provide)
-  const chartData = monthlyData.length > 0 ? monthlyData : Array.from({length:12}, (_,i)=> Math.round(Math.random()*1000));
-  
+  // Helper: Get current user's role in this household
+  const getUserRole = () => {
+    if (!household?.members || !user?.id) return null;
+    const userMember = household.members.find(m => m.userId === user.id);
+    return userMember?.role;
+  };
+
+  // Helper: Check if user can manage members (owner or co-owner)
+  const canManageMembers = () => {
+    const userRole = getUserRole();
+    return ['owner', 'co-owner'].includes(userRole);
+  };
+
+  // Helper: Handle member button click with access control
+  const handleMemberButtonClick = () => {
+    if (canManageMembers()) {
+      setSelectedMember(household?.members || []);
+    } else {
+      // Show alert if no permission
+      alert(t('You do not have permission to manage members', 'No tienes permiso para administrar miembros'));
+    }
+  };
+
   // Calculate available this month
   const available = summary ? (summary.totalIncome - summary.totalExpenses - fixedExpensesTotal) : 0;
   const availableThisMonth = available;
@@ -157,20 +204,9 @@ export default function DashboardPage(){
   return (
     <Layout>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{t('Welcome back', 'Bienvenido')}{user?.name ? `, ${user.name}` : ''}</h1>
-            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300">{t('Household', 'Hogar')}: {user?.householdName || '—'}</p>
-          </div>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-            <button 
-              onClick={() => { console.log('[Dashboard] Manual refresh'); fetchData(); }} 
-              className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
-            >
-              {t('Refresh', 'Actualizar')}
-            </button>
-            <button onClick={handleLogout} className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm">{t('Logout', 'Cerrar sesión')}</button>
-          </div>
+        <div className="mb-6">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{t('Welcome back', 'Bienvenido')}{user?.name ? `, ${user.name}` : ''}</h1>
+          <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300">{t('Household', 'Hogar')}: {user?.householdName || '—'}</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
@@ -186,9 +222,11 @@ export default function DashboardPage(){
           />
         </div>
 
+        <PendingTasksWidget tasks={payments} />
+
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           <div className="lg:col-span-2">
-            <SimpleBarChart data={chartData} labels={language === 'es' ? ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'] : ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']} />
+            <SpendingByCategoryWidget expenses={expensesData} />
           </div>
 
           <aside>
@@ -332,7 +370,16 @@ export default function DashboardPage(){
               </div>
               
               <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <button 
+                  onClick={handleMemberButtonClick}
+                  disabled={!canManageMembers()}
+                  className={`w-full flex items-center justify-between p-3 rounded-lg transition-colors ${
+                    canManageMembers() 
+                      ? 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer' 
+                      : 'bg-gray-100 dark:bg-gray-700 cursor-not-allowed opacity-60'
+                  }`}
+                  title={canManageMembers() ? '' : t('Only owners can manage members', 'Solo los propietarios pueden administrar miembros')}
+                >
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
                       <span className="text-blue-600 dark:text-blue-400 text-sm">👥</span>
@@ -342,7 +389,10 @@ export default function DashboardPage(){
                       <div className="font-semibold text-gray-800 dark:text-gray-200">{household?.members?.length || 0}</div>
                     </div>
                   </div>
-                </div>
+                  <svg className={`w-5 h-5 ${!canManageMembers() ? 'text-gray-400' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
 
                 {pendingInvites.length > 0 && (
                   <div className="flex items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-900 rounded-lg border border-yellow-200 dark:border-yellow-700">
@@ -368,6 +418,78 @@ export default function DashboardPage(){
             </div>
           </aside>
         </div>
+
+        {/* Member Details Modal */}
+        {selectedMember && typeof selectedMember === 'object' && !Array.isArray(selectedMember) && (
+          <MemberDetailsModal
+            member={selectedMember}
+            householdId={user?.householdId}
+            allMembers={household?.members}
+            onClose={() => setSelectedMember(null)}
+            onSave={(updatedMember) => {
+              // Update household members list
+              setHousehold(prev => ({
+                ...prev,
+                members: prev.members.map(m => 
+                  m.userId === updatedMember.userId ? updatedMember : m
+                )
+              }));
+            }}
+          />
+        )}
+
+        {/* Members List Modal */}
+        {Array.isArray(selectedMember) && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-lg">
+              <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  {t('Household Members', 'Miembros del Hogar')}
+                </h2>
+                <button
+                  onClick={() => setSelectedMember(null)}
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="p-6">
+                <div className="space-y-3">
+                  {selectedMember.map((member, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setSelectedMember(member)}
+                      className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center flex-shrink-0">
+                          <span className="text-indigo-600 dark:text-indigo-300 font-semibold text-sm">
+                            {member.name?.charAt(0).toUpperCase() || '?'}
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-medium text-gray-900 dark:text-white">{member.name || 'Member'}</div>
+                          <div className="text-sm text-gray-500 dark:text-gray-400">{member.email || ''}</div>
+                          {member.incomePercentage > 0 && (
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              {t('Income', 'Ingresos')}: {member.incomePercentage}%
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
   );

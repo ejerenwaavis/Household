@@ -1,11 +1,14 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../hooks/useAuth';
 
 export default function Sidebar(){
   const loc = useLocation();
+  const navigate = useNavigate();
   const { language, setLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
+  const { logout } = useAuth();
   const active = (path) => loc.pathname === path;
 
   return (
@@ -85,7 +88,7 @@ export default function Sidebar(){
         <button
           onClick={toggleTheme}
           type="button"
-          className="w-16 h-10 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 transition-all flex items-center justify-center cursor-pointer"
+          className="w-10 h-10 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 transition-all flex items-center justify-center cursor-pointer"
           title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
         >
           {theme === 'light' ? (
@@ -97,6 +100,20 @@ export default function Sidebar(){
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
             </svg>
           )}
+        </button>
+
+        {/* Logout Button */}
+        <button
+          onClick={() => {
+            logout();
+            navigate('/login');
+          }}
+          className="w-10 h-10 rounded-lg bg-red-100 dark:bg-red-900 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-800 transition-all flex items-center justify-center cursor-pointer"
+          title="Logout"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
         </button>
       </div>
     </aside>

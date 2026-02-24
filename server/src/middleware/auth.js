@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import Household from '../models/Household.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
@@ -39,16 +40,29 @@ export const authMiddleware = (req, res, next) => {
   next();
 };
 
-export const householdAuthMiddleware = (req, res, next) => {
+export const householdAuthMiddleware = async (req, res, next) => {
   const { householdId } = req.params;
 
   if (!req.user) {
     return res.status(401).json({ error: 'User not authenticated' });
   }
 
-  if (req.user.householdId !== householdId) {
-    return res.status(403).json({ error: 'Not authorized for this household' });
-  }
+  // Check if user is a member of the requested household
+  // We look up the household and check the members array instead of just checking
+  // the token's householdId, since users can switch between multiple households
+  try {
+    const household = await Household.findOne({
+      householdId,
+      'members.userId': req.user.userId
+    });
 
-  next();
+    if (!household) {
+      return res.status(403).json({ error: 'Not authorized for this household' });
+    }
+
+    next();
+  } catch (error) {
+    console.error('[householdAuthMiddleware] Error checking household access:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
 };

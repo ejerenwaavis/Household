@@ -15,10 +15,10 @@ export default function InviteAcceptPage() {
 
   useEffect(() => {
     if (!user) {
-      // Redirect to login if not authenticated
-      navigate('/login', { replace: true });
+      // Redirect to register with token if not authenticated
+      navigate(`/register/${token}`, { replace: true });
     }
-  }, [user, navigate]);
+  }, [user, navigate, token]);
 
   const handleAccept = async () => {
     if (!token) {
