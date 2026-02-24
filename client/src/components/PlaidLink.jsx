@@ -3,13 +3,13 @@
  * Wrapper for Plaid Link flow to securely connect bank accounts
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { usePlaidLink } from 'react-plaid-link';
 import axios from 'axios';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 
 const PlaidLink = ({ onSuccess, onExit }) => {
-  const { authToken } = useAuth();
+  const { token: authToken } = useAuth();
   const [loading, setLoading] = useState(false);
   const [linkToken, setLinkToken] = useState(null);
   const [error, setError] = useState(null);
@@ -119,13 +119,21 @@ const PlaidLink = ({ onSuccess, onExit }) => {
   });
 
   /**
+   * Auto-open Plaid Link once token is ready
+   */
+  useEffect(() => {
+    if (ready && linkToken) {
+      open();
+    }
+  }, [ready, linkToken, open]);
+
+  /**
    * Open Plaid Link when button is clicked
    */
   const handleConnectBank = () => {
     if (!linkToken && !loading) {
       createLinkToken();
-    }
-    if (ready && linkToken) {
+    } else if (ready && linkToken) {
       open();
     }
   };
@@ -134,12 +142,12 @@ const PlaidLink = ({ onSuccess, onExit }) => {
     <div className="plaid-link-container">
       <button
         onClick={handleConnectBank}
-        disabled={loading || !ready}
+        disabled={loading}
         className={`
           px-6 py-3 rounded-lg font-medium transition-all
-          ${loading || !ready
+          ${loading
             ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95'
+            : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95 cursor-pointer'
           }
         `}
       >

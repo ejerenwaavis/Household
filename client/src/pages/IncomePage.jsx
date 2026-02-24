@@ -114,6 +114,19 @@ export default function IncomePage(){
           <p className="text-sm text-gray-500 dark:text-gray-400">{t('Quickly log daily income for your household.', 'Registra los ingresos diarios de tu hogar.')}</p>
         </div>
 
+        {/* Link bank account prompt */}
+        <a
+          href="/linked-accounts"
+          className="flex items-center gap-3 mb-6 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors group"
+        >
+          <span className="text-2xl">🏦</span>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">Link your bank account</p>
+            <p className="text-xs text-blue-600 dark:text-blue-400">Automatically sync transactions instead of entering them manually</p>
+          </div>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-500 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+        </a>
+
         <IncomeForm householdId={user?.householdId} onCreated={handleCreated} />
 
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-6">

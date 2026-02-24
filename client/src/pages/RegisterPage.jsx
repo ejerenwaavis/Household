@@ -233,6 +233,23 @@ export default function RegisterPage() {
                     )}
                   </button>
                 </div>
+                {/* Live password requirements */}
+                {form.password.length > 0 && (
+                  <ul className="mt-2 space-y-1 text-xs">
+                    {[
+                      { label: 'At least 8 characters', ok: form.password.length >= 8 },
+                      { label: 'One uppercase letter (A–Z)', ok: /[A-Z]/.test(form.password) },
+                      { label: 'One lowercase letter (a–z)', ok: /[a-z]/.test(form.password) },
+                      { label: 'One number (0–9)', ok: /\d/.test(form.password) },
+                      { label: 'One special character (!@#$%^&*)', ok: /[!@#$%^&*]/.test(form.password) },
+                    ].map(({ label, ok }) => (
+                      <li key={label} className={`flex items-center gap-1.5 ${ok ? 'text-green-600' : 'text-red-500'}`}>
+                        <span>{ok ? '✓' : '✗'}</span>
+                        <span>{label}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded">{error}</div>}

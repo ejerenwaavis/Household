@@ -17,8 +17,8 @@ import MonthlyOverviewPage from './pages/MonthlyOverviewPage';
 import InviteAcceptPage from './pages/InviteAcceptPage';
 import MemberManagementPage from './pages/MemberManagementPage';
 import UnauthorizedPage from './pages/UnauthorizedPage';
-// import LinkedAccountsPage from './pages/LinkedAccountsPage';
-// import TransactionReviewPage from './pages/TransactionReviewPage';
+import LinkedAccountsPage from './pages/LinkedAccountsPage';
+import TransactionReviewPage from './pages/TransactionReviewPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 console.log('[App] Rendering App component');
@@ -48,8 +48,8 @@ function App() {
                   <Route path="/debt-payments" element={<DebtPaymentsPage />} />
                   <Route path="/monthly-overview" element={<MonthlyOverviewPage />} />
                   <Route path="/members" element={<MemberManagementPage />} />
-                  {/* <Route path="/linked-accounts" element={<LinkedAccountsPage />} />
-                  <Route path="/transactions/review" element={<TransactionReviewPage />} /> */}
+                  <Route path="/linked-accounts" element={<LinkedAccountsPage />} />
+                  <Route path="/transactions/review" element={<TransactionReviewPage />} />
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 </Route>
               </Routes>

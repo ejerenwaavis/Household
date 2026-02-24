@@ -33,6 +33,7 @@ export default function MobileSidebar({ isOpen, onClose }) {
     { path: '/debt-payments', label: 'Debt Payments', icon: '💳', color: 'pink' },
     { path: '/monthly-overview', label: 'Overview', icon: '📈', color: 'blue' },
     { path: '/members', label: 'Members', icon: '👥', color: 'purple' },
+    { path: '/linked-accounts', label: 'Linked Accounts', icon: '🏦', color: 'blue' },
   ];
 
   if (!isOpen) return null;
