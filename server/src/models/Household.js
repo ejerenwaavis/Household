@@ -25,7 +25,9 @@ const householdSchema = new mongoose.Schema({
   },
   settings: {
     sharedView: { type: Boolean, default: true },
-    notificationsEnabled: { type: Boolean, default: true }
+    notificationsEnabled: { type: Boolean, default: true },
+    creditCardOverspendThreshold: { type: Number, default: 500 }, // Amount in dollars above which to flag overspend
+    autoCreateOverspendProject: { type: Number, default: 1000 } // Auto-create project if overspend < this amount, otherwise require approval
   },
   createdAt: { type: Date, default: Date.now }
 });

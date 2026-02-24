@@ -19,6 +19,8 @@ import MemberManagementPage from './pages/MemberManagementPage';
 import UnauthorizedPage from './pages/UnauthorizedPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
+console.log('[App] Rendering App component');
+
 function App() {
   return (
     <ErrorBoundary>
@@ -26,33 +28,33 @@ function App() {
         <LanguageProvider>
           <ThemeProvider>
             <Router>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route path="/register/:inviteToken" element={<RegisterPage />} />
-            <Route path="/invite/:token" element={<InviteAcceptPage />} />
-            <Route path="/unauthorized" element={<UnauthorizedPage />} />
-            <Route element={<ProtectedRoute />}>
-              <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/dashboard/income" element={<IncomePage />} />
-              <Route path="/income" element={<IncomePage />} />
-              <Route path="/expenses" element={<ExpensesPage />} />
-              <Route path="/fixed-expenses" element={<FixedExpensesPage />} />
-              <Route path="/goals" element={<GoalsPage />} />
-              <Route path="/credit-cards" element={<CreditCardsPage />} />
-              <Route path="/card-statements" element={<CardStatementsPage />} />
-              <Route path="/debt-payments" element={<DebtPaymentsPage />} />
-              <Route path="/monthly-overview" element={<MonthlyOverviewPage />} />
-              <Route path="/members" element={<MemberManagementPage />} />
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            </Route>
-          </Routes>
-        </Router>
-            </ThemeProvider>
-          </LanguageProvider>
-        </AuthProvider>
-      </ErrorBoundary>
-    );
-  }
-  
-  export default App;
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
+                <Route path="/register/:inviteToken" element={<RegisterPage />} />
+                <Route path="/invite/:token" element={<InviteAcceptPage />} />
+                <Route path="/unauthorized" element={<UnauthorizedPage />} />
+                <Route element={<ProtectedRoute />}>
+                  <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path="/dashboard/income" element={<IncomePage />} />
+                  <Route path="/income" element={<IncomePage />} />
+                  <Route path="/expenses" element={<ExpensesPage />} />
+                  <Route path="/fixed-expenses" element={<FixedExpensesPage />} />
+                  <Route path="/goals" element={<GoalsPage />} />
+                  <Route path="/credit-cards" element={<CreditCardsPage />} />
+                  <Route path="/card-statements" element={<CardStatementsPage />} />
+                  <Route path="/debt-payments" element={<DebtPaymentsPage />} />
+                  <Route path="/monthly-overview" element={<MonthlyOverviewPage />} />
+                  <Route path="/members" element={<MemberManagementPage />} />
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                </Route>
+              </Routes>
+            </Router>
+          </ThemeProvider>
+        </LanguageProvider>
+      </AuthProvider>
+    </ErrorBoundary>
+  );
+}
+
+export default App;

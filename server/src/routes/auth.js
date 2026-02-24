@@ -2,6 +2,8 @@ import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { generateToken, verifyToken } from '../middleware/auth.js';
+import { TokenRotationService } from '../services/tokenRotationService.js';
+import { authSchemas, validateBody } from '../utils/validationSchemas.js';
 import User from '../models/User.js';
 import Household from '../models/Household.js';
 import HouseholdInvite from '../models/HouseholdInvite.js';
@@ -9,7 +11,7 @@ import HouseholdInvite from '../models/HouseholdInvite.js';
 const router = Router();
 
 // Register
-router.post('/register', async (req, res, next) => {
+router.post('/register', validateBody(authSchemas.register), async (req, res, next) => {
   try {
     const { email, password, name, householdName } = req.body;
     
@@ -19,12 +21,6 @@ router.post('/register', async (req, res, next) => {
       householdName,
       hasPassword: !!password,
     });
-
-    // Validate required fields
-    if (!email || !password || !name || !householdName) {
-      console.warn('[AUTH] Registration failed: Missing required fields', { email, name, householdName, hasPassword: !!password });
-      return res.status(400).json({ error: 'Missing required fields: email, password, name, and householdName are required' });
-    }
 
     // Check if user exists
     const existingUser = await User.findOne({ email });
@@ -68,15 +64,26 @@ router.post('/register', async (req, res, next) => {
       householdId,
       role: 'owner',
       profile: { name },
+      tokenVersion: 0,
+      lastLoginAt: new Date(),
     });
     
     console.log('[AUTH] User created successfully:', { userId, email, householdId });
 
-    const token = generateToken(user);
+    // Generate tokens with rotation support
+    const accessToken = TokenRotationService.generateAccessToken({
+      userId: user.userId,
+      email: user.email,
+      householdId: user.householdId,
+      role: user.role
+    });
+    const refreshToken = TokenRotationService.generateRefreshToken(user._id, 0);
 
     res.status(201).json({
       user: { userId, email, name, householdId, householdName },
-      token,
+      accessToken,
+      refreshToken,
+      expiresIn: 900, // 15 minutes in seconds
     });
   } catch (error) {
     console.error('[AUTH] Registration error:', {
@@ -90,16 +97,11 @@ router.post('/register', async (req, res, next) => {
 });
 
 // Login
-router.post('/login', async (req, res, next) => {
+router.post('/login', validateBody(authSchemas.login), async (req, res, next) => {
   try {
     const { email, password } = req.body;
     
     console.log('[AUTH] Login attempt:', { email, hasPassword: !!password });
-
-    if (!email || !password) {
-      console.warn('[AUTH] Login failed: Missing email or password');
-      return res.status(400).json({ error: 'Email and password required' });
-    }
 
     const user = await User.findOne({ email });
     if (!user) {
@@ -119,7 +121,19 @@ router.post('/login', async (req, res, next) => {
       return res.status(500).json({ error: 'Household not found' });
     }
     
-    const token = generateToken(user);
+    // Update login info
+    user.lastLoginAt = new Date();
+    user.lastLoginIp = req.ip;
+    await user.save();
+    
+    // Generate tokens with rotation support
+    const accessToken = TokenRotationService.generateAccessToken({
+      userId: user.userId,
+      email: user.email,
+      householdId: user.householdId,
+      role: user.role
+    });
+    const refreshToken = TokenRotationService.generateRefreshToken(user._id, user.tokenVersion || 0);
     
     // Get any pending invites for this user
     const pendingInvites = await HouseholdInvite.find({
@@ -138,7 +152,9 @@ router.post('/login', async (req, res, next) => {
         householdId: user.householdId,
         householdName: household.householdName,
       },
-      token,
+      accessToken,
+      refreshToken,
+      expiresIn: 900, // 15 minutes in seconds
       pendingInvites: pendingInvites.map(inv => ({
         id: inv._id,
         householdName: inv.householdName,
@@ -171,6 +187,52 @@ router.get('/me', (req, res) => {
   }
 
   res.json({ user: decoded });
+});
+
+// Refresh token endpoint
+// Exchange refresh token for new access token (with token rotation)
+router.post('/refresh', validateBody(authSchemas.refresh), async (req, res, next) => {
+  try {
+    const { refreshToken } = req.body;
+
+    const tokens = await TokenRotationService.rotateTokens(refreshToken);
+
+    console.log('[AUTH] Token rotation successful');
+    res.json({
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresIn: tokens.expiresIn,
+    });
+  } catch (error) {
+    console.error('[AUTH] Token refresh error:', error.message);
+    return res.status(401).json({ error: 'Invalid or expired refresh token' });
+  }
+});
+
+// Logout endpoint
+// Invalidates all refresh tokens for the user
+router.post('/logout', async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+
+    if (!token) {
+      return res.status(400).json({ error: 'No token provided' });
+    }
+
+    const decoded = verifyToken(token);
+    if (!decoded) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    // Invalidate all tokens for this user
+    await TokenRotationService.invalidateAllTokens(decoded.userId);
+
+    console.log('[AUTH] User logged out successfully:', { userId: decoded.userId });
+    res.json({ message: 'Logged out successfully' });
+  } catch (error) {
+    console.error('[AUTH] Logout error:', error.message);
+    next(error);
+  }
 });
 
 export default router;

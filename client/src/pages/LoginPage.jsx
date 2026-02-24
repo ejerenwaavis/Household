@@ -46,8 +46,12 @@ export default function LoginPage() {
       const { data } = await api.post('/auth/login', form);
       console.log('Login successful:', data);
       
+      // The backend returns accessToken and refreshToken
       // Pass pending invites to auth context
-      login(data.user, data.token, data.pendingInvites || []);
+      login(data.user, data.accessToken, data.pendingInvites || []);
+      
+      // Store refreshToken separately for token rotation
+      localStorage.setItem('refreshToken', data.refreshToken);
 
       // If there's an invite token, accept it automatically
       if (inviteToken) {
@@ -56,7 +60,7 @@ export default function LoginPage() {
           console.log('Invite accepted automatically:', inviteResult.data);
           // Update user with new household if available
           if (inviteResult.data.household) {
-            login(inviteResult.data.user || data.user, data.token, []);
+            login(inviteResult.data.user || data.user, data.accessToken, []);
           }
         } catch (inviteErr) {
           console.warn('Auto-accept failed:', inviteErr);

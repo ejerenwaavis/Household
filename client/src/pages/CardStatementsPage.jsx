@@ -6,6 +6,7 @@ import CardStatementForm from '../components/CardStatementForm';
 import EditCardStatementModal from '../components/EditCardStatementModal';
 import api from '../services/api';
 import { exportCardStatements } from '../services/exportService';
+import { formatMonth } from '../utils/dateUtils';
 
 export default function CardStatementsPage() {
   const { user } = useAuth();
@@ -69,7 +70,12 @@ export default function CardStatementsPage() {
       fetchStatements();
     } catch (error) {
       console.error('[CardStatements] Update error:', error);
-      alert(error.response?.data?.error || t('Failed to update statement', 'Error al actualizar estado'));
+      
+      if (error.response?.status === 409 && error.response?.data?.code === 'DUPLICATE_STATEMENT') {
+        alert(error.response?.data?.error || t('A statement for this card in that month already exists.', 'Ya existe una declaración para esta tarjeta en ese mes.'));
+      } else {
+        alert(error.response?.data?.error || t('Failed to update statement', 'Error al actualizar estado'));
+      }
     }
   };
 
@@ -84,6 +90,21 @@ export default function CardStatementsPage() {
     } catch (error) {
       console.error('[CardStatements] Delete error:', error);
       alert(error.response?.data?.error || t('Failed to delete statement', 'Error al eliminar estado'));
+    }
+  };
+
+  const handleFixMonths = async () => {
+    if (!window.confirm(t('This will recalculate month values for all statements based on their dates. Continue?', '¿Esto recalculará los valores de mes para todos los estados basado en sus fechas. Continuar?'))) {
+      return;
+    }
+
+    try {
+      await api.post(`/card-statements/${user.householdId}/migrate-fix-months`);
+      alert(t('Month values have been fixed!', '¡Los valores del mes han sido reparados!'));
+      fetchStatements();
+    } catch (error) {
+      console.error('[CardStatements] Migration error:', error);
+      alert(error.response?.data?.error || t('Failed to fix month values', 'Error al reparar valores del mes'));
     }
   };
 
@@ -118,6 +139,13 @@ export default function CardStatementsPage() {
               title="Download as CSV"
             >
               {t('Export', 'Exportar')}
+            </button>
+            <button
+              onClick={handleFixMonths}
+              className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors text-sm"
+              title="Fix month values"
+            >
+              {t('Fix Months', 'Reparar Meses')}
             </button>
             <button
               onClick={() => setShowForm(!showForm)}
@@ -157,10 +185,7 @@ export default function CardStatementsPage() {
                 {/* Month Header */}
                 <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
                   <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100">
-                    {new Date(monthData.month + '-01').toLocaleDateString(undefined, { 
-                      year: 'numeric', 
-                      month: 'long' 
-                    })}
+                    {formatMonth(monthData.month)}
                   </h2>
                   <div className="flex gap-4 text-sm">
                     <div>

@@ -51,7 +51,8 @@ export default function RegisterPage() {
         // Create new household with user as head
         const { data } = await api.post('/auth/register', form);
         console.log('Registration successful:', data);
-        login(data.user, data.token, []);
+        login(data.user, data.accessToken, []);
+        localStorage.setItem('refreshToken', data.refreshToken);
         navigate('/dashboard');
       } else if (registrationType === 'join' && inviteToken) {
         // Register with existing account that will join via invite
@@ -62,14 +63,15 @@ export default function RegisterPage() {
           householdName: `${form.name}'s Household`, // Temporary, will be replaced when they join
         });
         console.log('Registration successful:', registerData);
-        login(registerData.user, registerData.token, []);
+        login(registerData.user, registerData.accessToken, []);
+        localStorage.setItem('refreshToken', registerData.refreshToken);
 
         // Now accept the invite automatically
         try {
           const { data: inviteData } = await api.post(`/households/invite/accept/${inviteToken}`);
           console.log('Invite accepted:', inviteData);
           // Update user's household after accepting invite
-          login(inviteData.user || registerData.user, registerData.token, []);
+          login(inviteData.user || registerData.user, registerData.accessToken, []);
         } catch (inviteErr) {
           console.warn('Auto-accept invite failed, but registration succeeded:', inviteErr);
         }
@@ -83,7 +85,8 @@ export default function RegisterPage() {
           householdName: `${form.name}'s Household`,
         });
         console.log('Registration successful:', data);
-        login(data.user, data.token, []);
+        login(data.user, data.accessToken, []);
+        localStorage.setItem('refreshToken', data.refreshToken);
         navigate('/dashboard');
       }
     } catch (err) {

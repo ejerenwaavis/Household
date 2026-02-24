@@ -49,13 +49,23 @@ const debtPaymentSchema = new Schema({
 debtPaymentSchema.index({ householdId: 1, month: -1 });
 debtPaymentSchema.index({ cardId: 1, paymentDate: -1 });
 
-// Pre-save hook to ensure month matches paymentDate
+// Pre-save hook to ensure month is correctly calculated from paymentDate
 debtPaymentSchema.pre('save', function(next) {
-  if (this.isModified('paymentDate')) {
+  // ALWAYS calculate month from paymentDate - this is the source of truth
+  if (this.paymentDate) {
     const date = new Date(this.paymentDate);
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
-    this.month = `${year}-${month}`;
+    const calculatedMonth = `${year}-${month}`;
+    
+    if (this.month !== calculatedMonth) {
+      console.log('[DebtPayment Pre-save] Auto-calculating month:', {
+        paymentDate: this.paymentDate,
+        oldMonth: this.month,
+        newMonth: calculatedMonth
+      });
+      this.month = calculatedMonth;
+    }
   }
   next();
 });

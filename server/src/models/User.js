@@ -10,7 +10,26 @@ const userSchema = new mongoose.Schema({
     name: { type: String, required: true },
     avatar: String
   },
-  createdAt: { type: Date, default: Date.now }
+  // Token rotation for security
+  tokenVersion: { 
+    type: Number, 
+    default: 0,
+    description: 'Incremented on logout to invalidate all tokens'
+  },
+  lastLogout: {
+    type: Date,
+    description: 'Timestamp of last logout'
+  },
+  lastLoginAt: {
+    type: Date,
+    description: 'Last successful login'
+  },
+  lastLoginIp: {
+    type: String,
+    description: 'IP address of last login'
+  },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
 });
 
 export default mongoose.model('User', userSchema);

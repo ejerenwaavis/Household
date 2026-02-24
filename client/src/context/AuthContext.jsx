@@ -13,28 +13,30 @@ export function AuthProvider({ children }) {
     const savedToken = localStorage.getItem('token');
     const savedUser = localStorage.getItem('user');
     const savedInvites = localStorage.getItem('pendingInvites');
-    console.log('[AuthContext] Loading from localStorage:', { savedUser, savedToken: !!savedToken });
+    console.log('[AuthContext] Loading from localStorage:', { hasUser: !!savedUser, hasToken: !!savedToken });
     if (savedToken && savedUser) {
       const parsed = JSON.parse(savedUser);
-      console.log('[AuthContext] Parsed user:', { userId: parsed.id, householdId: parsed.householdId, householdName: parsed.householdName });
+      console.log('[AuthContext] Parsed user:', { userId: parsed.userId, householdId: parsed.householdId, householdName: parsed.householdName });
       setToken(savedToken);
       setUser(parsed);
       if (savedInvites) {
         setPendingInvites(JSON.parse(savedInvites));
       }
     } else {
-      console.log('[AuthContext] No saved token or user');
+      console.log('[AuthContext] No saved token or user, setting loading to false');
     }
     setLoading(false);
   }, []);
 
   const login = (userData, authToken, invites = []) => {
+    console.log('[AuthContext] Login called with:', { userData, hasToken: !!authToken });
     setUser(userData);
     setToken(authToken);
     setPendingInvites(invites || []);
     localStorage.setItem('token', authToken);
     localStorage.setItem('user', JSON.stringify(userData));
     localStorage.setItem('pendingInvites', JSON.stringify(invites || []));
+    console.log('[AuthContext] Login complete, isAuthenticated:', !!authToken);
   };
 
   const switchHousehold = (householdId, householdName) => {

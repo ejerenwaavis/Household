@@ -50,6 +50,33 @@ const cardStatementSchema = new Schema({
 cardStatementSchema.index({ householdId: 1, month: -1 });
 cardStatementSchema.index({ cardId: 1, month: -1 });
 
+// Unique compound index: one statement per card per month per household
+cardStatementSchema.index(
+  { householdId: 1, cardId: 1, month: 1 },
+  { unique: true, sparse: true, name: 'unique_card_statement_per_month' }
+);
+
+// Pre-save hook to ensure month is correctly calculated from statementDate
+cardStatementSchema.pre('save', function(next) {
+  // ALWAYS calculate month from statementDate - this is the source of truth
+  if (this.statementDate) {
+    const date = new Date(this.statementDate);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const calculatedMonth = `${year}-${month}`;
+    
+    if (this.month !== calculatedMonth) {
+      console.log('[CardStatement Pre-save] Auto-calculating month:', {
+        statementDate: this.statementDate,
+        oldMonth: this.month,
+        newMonth: calculatedMonth
+      });
+      this.month = calculatedMonth;
+    }
+  }
+  next();
+});
+
 // Virtual: Amount paid off on this statement
 cardStatementSchema.virtual('amountPaid').get(function() {
   return Math.max(0, this.statementBalance - this.currentBalance);

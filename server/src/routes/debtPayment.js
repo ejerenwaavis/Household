@@ -121,7 +121,10 @@ router.get('/:householdId', authMiddleware, householdAuthMiddleware, async (req,
 router.post('/:householdId', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
   try {
     const { householdId } = req.params;
-    const paymentData = { ...req.body, householdId };
+    let paymentData = { ...req.body, householdId };
+    
+    // Remove month from payment data - let pre-save hook calculate it from paymentDate
+    delete paymentData.month;
     
     // Verify the card belongs to this household
     const card = await CreditCard.findOne({ 
@@ -133,7 +136,7 @@ router.post('/:householdId', authMiddleware, householdAuthMiddleware, async (req
       return res.status(404).json({ error: 'Credit card not found in this household' });
     }
     
-    // Create the payment
+    // Create the payment - pre-save hook will calculate month from paymentDate
     const payment = await DebtPayment.create(paymentData);
     
     // Update the credit card's current balance

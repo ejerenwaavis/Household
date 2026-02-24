@@ -1,0 +1,193 @@
+/* Form Field Styles */
+
+.form-field {
+  margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.form-field__label {
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #333;
+  display: block;
+}
+
+.form-field__required {
+  color: #dc3545;
+  margin-left: 0.25rem;
+}
+
+.form-field__input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.form-field__icon {
+  position: absolute;
+  left: 12px;
+  color: #666;
+  font-size: 0.9rem;
+  pointer-events: none;
+}
+
+.form-field__icon--error {
+  color: #dc3545;
+  left: auto;
+  right: 12px;
+}
+
+.form-field__icon--valid {
+  color: #28a745;
+  left: auto;
+  right: 12px;
+}
+
+.form-field__input {
+  width: 100%;
+  padding: 0.75rem 0.875rem;
+  padding-left: 2.5rem;
+  border: 2px solid #ddd;
+  border-radius: 0.375rem;
+  font-size: 1rem;
+  font-family: inherit;
+  transition: border-color 0.3s, box-shadow 0.3s;
+  background-color: #fff;
+}
+
+.form-field__input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.form-field__input:disabled {
+  background-color: #e9ecef;
+  color: #6c757d;
+  cursor: not-allowed;
+}
+
+/* Error State */
+.form-field.error .form-field__input {
+  border-color: #dc3545;
+}
+
+.form-field.error .form-field__input:focus {
+  border-color: #dc3545;
+  box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+}
+
+/* Valid State */
+.form-field.valid .form-field__input {
+  border-color: #28a745;
+}
+
+.form-field.valid .form-field__input:focus {
+  border-color: #28a745;
+  box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25);
+}
+
+/* Error Message */
+.form-field__error {
+  margin-top: 0.375rem;
+  font-size: 0.875rem;
+  color: #dc3545;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.form-field__error-icon {
+  font-size: 1rem;
+}
+
+/* Help Text */
+.form-field__help {
+  margin-top: 0.375rem;
+  font-size: 0.875rem;
+  color: #666;
+}
+
+/* Password Strength Indicator */
+.form-field__password-strength {
+  margin-top: 0.75rem;
+}
+
+.form-field__strength-bar {
+  width: 100%;
+  height: 4px;
+  background-color: #e9ecef;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 0.375rem;
+}
+
+.form-field__strength-indicator {
+  height: 100%;
+  transition: width 0.3s, background-color 0.3s;
+  border-radius: 2px;
+}
+
+.form-field__strength-gray {
+  background-color: #6c757d;
+}
+
+.form-field__strength-red {
+  background-color: #dc3545;
+}
+
+.form-field__strength-orange {
+  background-color: #fd7e14;
+}
+
+.form-field__strength-blue {
+  background-color: #007bff;
+}
+
+.form-field__strength-green {
+  background-color: #28a745;
+}
+
+.form-field__strength-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.form-field__strength-gray {
+  color: #6c757d;
+}
+
+.form-field__strength-red {
+  color: #dc3545;
+}
+
+.form-field__strength-orange {
+  color: #fd7e14;
+}
+
+.form-field__strength-blue {
+  color: #007bff;
+}
+
+.form-field__strength-green {
+  color: #28a745;
+}
+
+/* Responsive */
+@media (max-width: 576px) {
+  .form-field {
+    margin-bottom: 1rem;
+  }
+
+  .form-field__label {
+    font-size: 0.9rem;
+  }
+
+  .form-field__input {
+    font-size: 16px; /* Prevents zoom on mobile */
+  }
+}

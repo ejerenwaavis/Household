@@ -2,7 +2,7 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 export default function ProtectedRoute({ children }) {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
 
   if (loading) {
     return (
@@ -15,7 +15,10 @@ export default function ProtectedRoute({ children }) {
     );
   }
 
+  console.log('[ProtectedRoute] Checking access:', { isAuthenticated, userId: user?.userId, hasUser: !!user });
+
   if (!isAuthenticated) {
+    console.warn('[ProtectedRoute] Not authenticated, redirecting to /unauthorized');
     // Redirect to an unauthorized landing page so users understand why.
     return <Navigate to="/unauthorized" replace />;
   }

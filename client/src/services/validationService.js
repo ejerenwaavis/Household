@@ -176,6 +176,86 @@ export const validators = {
   match: (fieldValue, matchValue, fieldName) => {
     if (fieldValue !== matchValue) return `${fieldName} does not match`;
     return null;
+  },
+
+  /**
+   * Phone number validation
+   */
+  phone: (value) => {
+    if (!value) return 'Phone number is required';
+    const phoneRegex = /^[\d\s\-\+\(\)]{10,}$/;
+    if (!phoneRegex.test(value)) return 'Invalid phone number format';
+    const digitsOnly = value.replace(/\D/g, '');
+    if (digitsOnly.length < 10) return 'Phone must have at least 10 digits';
+    return null;
+  },
+
+  /**
+   * Username validation
+   */
+  username: (value) => {
+    if (!value) return 'Username is required';
+    if (value.length < 3) return 'Username must be at least 3 characters';
+    if (value.length > 20) return 'Username must not exceed 20 characters';
+    if (!/^[a-zA-Z0-9_-]+$/.test(value)) {
+      return 'Username can only contain letters, numbers, underscores, and hyphens';
+    }
+    return null;
+  },
+
+  /**
+   * Strong password validation (includes special characters)
+   */
+  strongPassword: (value) => {
+    if (!value) return 'Password is required';
+    if (value.length < 8) return 'Password must be at least 8 characters';
+    if (!/[A-Z]/.test(value)) return 'Password must contain uppercase letter';
+    if (!/[a-z]/.test(value)) return 'Password must contain lowercase letter';
+    if (!/[0-9]/.test(value)) return 'Password must contain number';
+    if (!/[!@#$%^&*]/.test(value)) return 'Password must contain special character (!@#$%^&*)';
+    return null;
+  },
+
+  /**
+   * IBAN validation
+   */
+  iban: (value) => {
+    if (!value) return 'IBAN is required';
+    const ibanRegex = /^[A-Z]{2}[0-9]{2}[A-Z0-9]{1,30}$/;
+    const cleaned = value.replace(/\s/g, '');
+    if (!ibanRegex.test(cleaned)) return 'Invalid IBAN format';
+    return null;
+  },
+
+  /**
+   * Credit card with Luhn algorithm validation
+   */
+  luhnCardNumber: (value) => {
+    if (!value) return 'Card number is required';
+    const cleaned = value.replace(/\D/g, '');
+    
+    if (cleaned.length < 13 || cleaned.length > 19) {
+      return 'Card number must be between 13 and 19 digits';
+    }
+
+    // Luhn algorithm
+    let sum = 0;
+    let isEven = false;
+
+    for (let i = cleaned.length - 1; i >= 0; i--) {
+      let digit = parseInt(cleaned[i], 10);
+
+      if (isEven) {
+        digit *= 2;
+        if (digit > 9) digit -= 9;
+      }
+
+      sum += digit;
+      isEven = !isEven;
+    }
+
+    if (sum % 10 !== 0) return 'Invalid card number';
+    return null;
   }
 };
 
@@ -275,9 +355,56 @@ export const validationSchemas = {
   }
 };
 
+/**
+ * Calculate password strength score (0-100)
+ */
+export const getPasswordStrength = (password) => {
+  let strength = 0;
+
+  if (!password) return { score: 0, label: 'None', color: 'gray' };
+
+  if (password.length >= 8) strength += 15;
+  if (password.length >= 12) strength += 10;
+  if (password.length >= 16) strength += 10;
+  if (/[a-z]/.test(password)) strength += 15;
+  if (/[A-Z]/.test(password)) strength += 15;
+  if (/[0-9]/.test(password)) strength += 15;
+  if (/[!@#$%^&*]/.test(password)) strength += 15;
+
+  let label, color;
+  if (strength < 30) { label = 'Weak'; color = 'red'; }
+  else if (strength < 60) { label = 'Fair'; color = 'orange'; }
+  else if (strength < 85) { label = 'Good'; color = 'blue'; }
+  else { label = 'Strong'; color = 'green'; }
+
+  return { score: strength, label, color };
+};
+
+/**
+ * Format currency value for display
+ */
+export const formatCurrency = (value) => {
+  if (!value && value !== 0) return '';
+  return parseFloat(value).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+};
+
+/**
+ * Parse currency string value
+ */
+export const parseCurrency = (value) => {
+  if (!value) return 0;
+  return parseFloat(value.replace(/[$,]/g, ''));
+};
+
 export default {
   validators,
   validateForm,
   validateField,
-  validationSchemas
+  validationSchemas,
+  getPasswordStrength,
+  formatCurrency,
+  parseCurrency
 };

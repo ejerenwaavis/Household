@@ -33,6 +33,8 @@ import goalContributionRouter from './routes/goalContribution.js';
 import creditCardRouter from './routes/creditCard.js';
 import cardStatementRouter from './routes/cardStatement.js';
 import debtPaymentRouter from './routes/debtPayment.js';
+import creditCardStatementRouter from './routes/creditCardStatement.js';
+import taskReminderRouter from './routes/taskReminder.js';
 
 // Import models
 import Household from './models/Household.js';
@@ -124,6 +126,8 @@ app.use('/api/goal-contributions', createLimiter, goalContributionRouter);
 app.use('/api/credit-cards', createLimiter, creditCardRouter);
 app.use('/api/card-statements', createLimiter, cardStatementRouter);
 app.use('/api/debt-payments', createLimiter, debtPaymentRouter);
+app.use('/api/credit-card-statements', createLimiter, creditCardStatementRouter);
+app.use('/api/tasks', createLimiter, taskReminderRouter);
 
 // ============================================================
 // Development-only Routes (strict limiting)

@@ -70,11 +70,24 @@ export default function MemberManagementPage() {
 
   const isHeadOfHouse = household?.headOfHouseId?.toString() === user?.userId?.toString();
   
-  // Role-based access control: Check if user is owner or co-owner
+  // Role-based access control: Check if user is admin
   const canManageMembers = () => {
-    if (!household?.members || !user?.id) return false;
-    const userMember = household.members.find(m => m.userId === user.id);
-    return ['owner', 'co-owner'].includes(userMember?.role);
+    if (!household?.members || !user?.userId) {
+      console.log('[MemberManagement] Cannot manage: missing household.members or user.userId', {
+        hasMembers: !!household?.members,
+        userId: user?.userId
+      });
+      return false;
+    }
+    
+    const userMember = household.members.find(m => m.userId === user.userId);
+    console.log('[MemberManagement] User member found:', userMember);
+    
+    // Admin or owner can manage members
+    const canManage = userMember && (userMember.role === 'admin' || userMember.role === 'owner');
+    console.log('[MemberManagement] Can manage members?', canManage, 'User role:', userMember?.role);
+    
+    return canManage;
   };
 
   if (loading) {
