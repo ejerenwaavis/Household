@@ -19,6 +19,9 @@ import MemberManagementPage from './pages/MemberManagementPage';
 import UnauthorizedPage from './pages/UnauthorizedPage';
 import LinkedAccountsPage from './pages/LinkedAccountsPage';
 import TransactionReviewPage from './pages/TransactionReviewPage';
+import PricingPage from './pages/PricingPage';
+import SubscriptionPage from './pages/SubscriptionPage';
+import InsightsPage from './pages/InsightsPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 console.log('[App] Rendering App component');
@@ -50,6 +53,9 @@ function App() {
                   <Route path="/members" element={<MemberManagementPage />} />
                   <Route path="/linked-accounts" element={<LinkedAccountsPage />} />
                   <Route path="/transactions/review" element={<TransactionReviewPage />} />
+                  <Route path="/pricing" element={<PricingPage />} />
+                  <Route path="/subscription" element={<SubscriptionPage />} />
+                  <Route path="/insights" element={<InsightsPage />} />
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 </Route>
               </Routes>

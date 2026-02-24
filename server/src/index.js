@@ -22,6 +22,7 @@ import swaggerConfig from './config/swagger.js';
 
 // Import background jobs
 import { initializeTransactionSyncJob } from './services/transactionSyncService.js';
+import { initializeInsightsJob } from './services/insightsJobService.js';
 
 // Import routes
 import authRouter from './routes/auth.js';
@@ -39,6 +40,9 @@ import debtPaymentRouter from './routes/debtPayment.js';
 import creditCardStatementRouter from './routes/creditCardStatement.js';
 import taskReminderRouter from './routes/taskReminder.js';
 import plaidRouter from './routes/plaid.js';
+import subscriptionRouter from './routes/subscription.js';
+import insightsRouter from './routes/insights.js';
+import webhookRouter from './routes/webhook.js';
 
 // Import models
 import Household from './models/Household.js';
@@ -53,6 +57,11 @@ import DebtPayment from './models/DebtPayment.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// ============================================================
+// Stripe Webhook (MUST be before express.json() - needs raw body)
+// ============================================================
+app.use('/api/webhooks', webhookRouter);
 
 // ============================================================
 // Security Middleware Stack (in correct order)
@@ -100,6 +109,12 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/household')
     } catch (err) {
       console.error('❌ Failed to initialize transaction sync job:', err.message);
     }
+
+    try {
+      initializeInsightsJob();
+    } catch (err) {
+      console.error('❌ Failed to initialize insights job:', err.message);
+    }
   })
   .catch((error) => {
     console.error('❌ MongoDB connection error:', error.message);
@@ -142,6 +157,8 @@ app.use('/api/debt-payments', createLimiter, debtPaymentRouter);
 app.use('/api/credit-card-statements', createLimiter, creditCardStatementRouter);
 app.use('/api/tasks', createLimiter, taskReminderRouter);
 app.use('/api/plaid', createLimiter, plaidRouter);
+app.use('/api/subscription', createLimiter, subscriptionRouter);
+app.use('/api/insights', createLimiter, insightsRouter);
 
 // ============================================================
 // Development-only Routes (strict limiting)
