@@ -5,11 +5,11 @@
 
 import { useCallback, useState, useEffect } from 'react';
 import { usePlaidLink } from 'react-plaid-link';
-import axios from 'axios';
+import api from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 
 const PlaidLink = ({ onSuccess, onExit }) => {
-  const { token: authToken } = useAuth();
+  useAuth(); // ensures user is authenticated
   const [loading, setLoading] = useState(false);
   const [linkToken, setLinkToken] = useState(null);
   const [error, setError] = useState(null);
@@ -23,15 +23,7 @@ const PlaidLink = ({ onSuccess, onExit }) => {
       setLoading(true);
       setError(null);
 
-      const response = await axios.post(
-        '/api/plaid/create-link-token',
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${authToken}`
-          }
-        }
-      );
+      const response = await api.post('/plaid/create-link-token', {});
 
       if (response.data.linkToken) {
         setLinkToken(response.data.linkToken);
@@ -44,7 +36,7 @@ const PlaidLink = ({ onSuccess, onExit }) => {
     } finally {
       setLoading(false);
     }
-  }, [authToken]);
+  }, []);
 
   /**
    * Handle successful Plaid Link flow
@@ -61,15 +53,7 @@ const PlaidLink = ({ onSuccess, onExit }) => {
       });
 
       // Exchange public token for access token
-      const response = await axios.post(
-        '/api/plaid/exchange-token',
-        { publicToken, metadata },
-        {
-          headers: {
-            Authorization: `Bearer ${authToken}`
-          }
-        }
-      );
+      const response = await api.post('/plaid/exchange-token', { publicToken, metadata });
 
       console.log('[PlaidLink] Token exchanged successfully', {
         linkedAccounts: response.data.linkedAccounts.length
@@ -86,7 +70,7 @@ const PlaidLink = ({ onSuccess, onExit }) => {
     } finally {
       setLoading(false);
     }
-  }, [authToken, onSuccess]);
+  }, [onSuccess]);
 
   /**
    * Handle Plaid Link exit (user closes or error occurs)

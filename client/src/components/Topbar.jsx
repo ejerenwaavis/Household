@@ -65,7 +65,7 @@ export default function Topbar({ onMobileMenuToggle }){
             </svg>
           </button>
 
-          <div className="flex items-center space-x-3">
+          <a href="/settings/profile" className="flex items-center space-x-3 hover:opacity-80 transition-opacity" title="Account Settings">
             <div className="text-right hidden sm:block">
               <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{user?.name || 'User'}</div>
               <div className="text-xs text-gray-500 dark:text-gray-400 capitalize">{user?.role || 'member'}</div>
@@ -73,7 +73,7 @@ export default function Topbar({ onMobileMenuToggle }){
             <div className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500 to-yellow-400 flex items-center justify-center text-white font-bold">
               {user?.name?.charAt(0)?.toUpperCase() || 'U'}
             </div>
-          </div>
+          </a>
         </div>
       </div>
     </header>

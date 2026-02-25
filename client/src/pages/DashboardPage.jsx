@@ -3,7 +3,7 @@ import MetricCard from '../components/MetricCard';
 import SpendingByCategoryWidget from '../components/SpendingByCategoryWidget';
 import PendingTasksWidget from '../components/PendingTasksWidget';
 import MemberDetailsModal from '../components/MemberDetailsModal';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../context/LanguageContext';
 import { useState, useEffect, useCallback } from 'react';
@@ -27,6 +27,8 @@ export default function DashboardPage(){
   const [pendingInvites, setPendingInvites] = useState([]);
   const [selectedMember, setSelectedMember] = useState(null);
   const [expensesData, setExpensesData] = useState([]);
+  const [subscription, setSubscription] = useState(null);
+  const [plaidTransactions, setPlaidTransactions] = useState([]);
 
   const fetchData = useCallback(async () => {
     if (!user?.householdId) {
@@ -39,7 +41,7 @@ export default function DashboardPage(){
       const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       console.log('[Dashboard] Making API calls with householdId:', user.householdId);
       
-      const [summaryRes, expensesRes, paymentsRes, goalsRes, creditCardsRes, incomeRes, variableExpensesRes] = await Promise.all([
+      const [summaryRes, expensesRes, paymentsRes, goalsRes, creditCardsRes, incomeRes, variableExpensesRes, subRes] = await Promise.all([
         api.get(`/households/${user.householdId}/summary`).catch(err => { console.error('[Dashboard] Summary failed for householdId:', user.householdId, err.response?.status, err.message); return null; }),
         api.get(`/fixed-expenses/${user.householdId}`).catch(err => { console.error('[Dashboard] Fixed expenses failed for householdId:', user.householdId, err.response?.status, err.message); return null; }),
         api.get(`/fixed-expense-payments/${user.householdId}?month=${monthStr}`).catch(err => { console.error('[Dashboard] Payments failed for householdId:', user.householdId, err.response?.status, err.message); return null; }),
@@ -47,6 +49,7 @@ export default function DashboardPage(){
         api.get(`/credit-cards/${user.householdId}`).catch(err => { console.error('[Dashboard] Credit cards failed for householdId:', user.householdId, err.response?.status, err.message); return null; }),
         api.get(`/income/${user.householdId}`).catch(err => { console.error('[Dashboard] Income failed for householdId:', user.householdId, err.response?.status, err.message); return null; }),
         api.get(`/expenses/${user.householdId}`).catch(err => { console.error('[Dashboard] Variable expenses failed for householdId:', user.householdId, err.response?.status, err.message); return null; }),
+        api.get('/subscription').catch(() => null),
       ]);
       
       // Also fetch household details to get members list and pending invites
@@ -72,6 +75,7 @@ export default function DashboardPage(){
       });
       
       if (summaryRes?.data) setSummary(summaryRes.data);
+      if (subRes?.data) setSubscription(subRes.data);
       if (expensesRes?.data) setFixedExpensesTotal(expensesRes.data.total || 0);
       if (paymentsRes?.data) {
         console.log('[Dashboard] Payments updated:', paymentsRes.data.payments);
@@ -104,6 +108,25 @@ export default function DashboardPage(){
       
       // Build recent transactions from all sources
       const recent = [];
+      
+      // Pull Plaid bank transactions (most recent 10)
+      try {
+        const plaidRes = await api.get('/plaid/transactions?limit=10');
+        const plaidTxns = plaidRes.data?.transactions || [];
+        setPlaidTransactions(plaidTxns);
+        plaidTxns.forEach(txn => {
+          recent.push({
+            type: 'plaid',
+            name: txn.name || txn.merchantName || 'Bank Transaction',
+            amount: Math.abs(txn.amount),
+            isCredit: txn.amount < 0,
+            category: txn.userCategory || txn.primaryCategory || 'Other',
+            date: txn.date,
+            pending: txn.isPending,
+          });
+        });
+      } catch (_) { /* no linked accounts yet, skip */ }
+
       if (incomeRes?.data?.incomes) {
         incomeRes.data.incomes.slice(0, 3).forEach(inc => {
           const breakdown = Array.isArray(inc.dailyBreakdown) ? inc.dailyBreakdown[0] : null;
@@ -136,7 +159,7 @@ export default function DashboardPage(){
         });
       }
       recent.sort((a, b) => new Date(b.date) - new Date(a.date));
-      setRecentTransactions(recent.slice(0, 5));
+      setRecentTransactions(recent.slice(0, 8));
       
       setLoading(false);
     } catch (err) {
@@ -209,6 +232,22 @@ export default function DashboardPage(){
           <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300">{t('Household', 'Hogar')}: {user?.householdName || '—'}</p>
         </div>
 
+        {/* Subscription Banner */}
+        {subscription && subscription.subscription?.plan?.type === 'free' && (
+          <div className="mb-5 flex items-center justify-between bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 border border-purple-200 dark:border-purple-800 rounded-xl px-4 py-3">
+            <div className="flex items-center gap-3">
+              <span className="text-xl">⭐</span>
+              <div>
+                <p className="text-sm font-semibold text-purple-900 dark:text-purple-300">You're on the Free plan</p>
+                <p className="text-xs text-purple-700 dark:text-purple-400">Upgrade to unlock AI insights, full history, and more features.</p>
+              </div>
+            </div>
+            <Link to="/pricing" className="shrink-0 px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg transition-colors">
+              Upgrade
+            </Link>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <MetricCard title={t('Total Income', 'Total de Ingresos')} value={summary ? `$${summary.totalIncome.toFixed(2)}` : '$0.00'} subtitle={t('This month', 'Este mes')} accent="bg-green-500" linkTo="/income" />
           <MetricCard title={t('Fixed Expenses', 'Gastos Fijos')} value={`$${fixedExpensesTotal.toFixed(2)}`} subtitle={t('Monthly bills', 'Facturas mensuales')} accent="bg-red-500" linkTo="/fixed-expenses" />
@@ -224,15 +263,16 @@ export default function DashboardPage(){
 
         <PendingTasksWidget tasks={payments} />
 
+        {/* Row 2: Spending chart + quick widgets */}
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           <div className="lg:col-span-2">
             <SpendingByCategoryWidget expenses={expensesData} />
           </div>
 
-          <aside>
+          <div className="flex flex-col gap-4">
             {/* Credit Debt Widget */}
             {creditSummary && creditSummary.cardCount > 0 && (
-              <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700 mb-4">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300">{t('Credit Card Debt', 'Deuda de Tarjetas')}</h3>
                   <a href="/credit-cards" className="text-xs text-pink-600 dark:text-pink-400 hover:text-pink-700">{t('View all', 'Ver todo')}</a>
@@ -263,36 +303,20 @@ export default function DashboardPage(){
                 </div>
               </div>
             )}
-            
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700">
-              <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-3">{t('Recent Activity', 'Actividad Reciente')}</h3>
-              {recentTransactions.length === 0 ? (
-                <ul className="space-y-3 text-sm text-gray-600 dark:text-gray-400">
-                  <li className="flex justify-between"><span>Water Bill</span><span className="font-medium">$120</span></li>
-                  <li className="flex justify-between"><span>Salary</span><span className="font-medium">$4,500</span></li>
-                  <li className="flex justify-between"><span>Internet</span><span className="font-medium">$60</span></li>
-                </ul>
-              ) : (
-                <ul className="space-y-3 text-sm">
-                  {recentTransactions.map((txn, idx) => (
-                    <li key={idx} className="flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${
-                          txn.type === 'income' ? 'bg-green-500' : 
-                          txn.type === 'payment' ? 'bg-blue-500' : 'bg-orange-500'
-                        }`} />
-                        <span className="text-gray-700 dark:text-gray-300">{txn.name}</span>
-                      </div>
-                      <span className={`font-medium ${
-                        txn.type === 'income' ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'
-                      }`}>${txn.amount.toFixed(2)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700 mt-4">
+            {/* AI Insights Quick Link */}
+            <Link to="/insights" className="block bg-gradient-to-br from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 rounded-2xl p-4 shadow-md transition-all group">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-white mb-1">💡 Smart Financial Insights</h3>
+                  <p className="text-xs text-purple-200">View spending analysis & recommendations →</p>
+                </div>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-purple-200 group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m1.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+              </div>
+            </Link>
+
+            {/* Fixed Expenses This Month */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700">
               <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-3">{t('Fixed Expenses This Month', 'Gastos Fijos Este Mes')}</h3>
               {(() => {
                 const paidTotal = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
@@ -319,104 +343,155 @@ export default function DashboardPage(){
                           ${unpaidTotal.toFixed(2)}
                         </span>
                       </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {t('Total:', 'Total:')} ${fixedExpensesTotal.toFixed(2)}
-                      </div>
                     </div>
                   </div>
                 );
               })()}
             </div>
+          </div>
+        </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700 mt-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300">{t('Goals & Funds', 'Metas y Fondos')}</h3>
-                <a href="/goals" className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700">{t('View all', 'Ver todo')}</a>
-              </div>
-              {goals.length === 0 ? (
-                <div className="text-xs text-gray-400 dark:text-gray-500 py-3 text-center">{t('No goals yet.', 'Sin objetivos aún.')}</div>
-              ) : (
-                <ul className="space-y-3">
-                  {goals.slice(0, 3).map((goal) => {
-                    const key = goal._id || goal.id;
-                    const progress = goal.progressPercent != null ? goal.progressPercent : (goal.target > 0 ? Math.min(100, Math.round((goal.currentBalance / goal.target) * 100)) : null);
-                    return (
-                      <li key={key}>
-                        <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400 mb-1">
-                          <span className="font-medium text-gray-700 dark:text-gray-200">{goal.name}</span>
-                          <span>{progress != null ? `${progress}%` : `$${Number(goal.currentBalance || 0).toFixed(0)}`}</span>
-                        </div>
-                        {goal.target > 0 && (
-                          <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
-                            <div className="h-1.5 rounded-full bg-teal-500 transition-all" style={{ width: `${progress}%` }} />
-                          </div>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
+        {/* Row 3: Recent Activity — full width with bank transactions */}
+        <div className="mt-4 bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-md border border-gray-100 dark:border-gray-700">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">{t('Recent Activity', 'Actividad Reciente')}</h3>
+            <div className="flex items-center gap-3">
+              {plaidTransactions.length > 0 && (
+                <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full font-medium">
+                  🏦 {plaidTransactions.length} bank txns
+                </span>
               )}
+              <Link to="/transactions/review" className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                View all →
+              </Link>
             </div>
+          </div>
+          {recentTransactions.length === 0 ? (
+            <div className="text-center py-6 text-sm text-gray-400 dark:text-gray-500">
+              <p>No recent activity yet.</p>
+              <Link to="/linked-accounts" className="text-blue-500 hover:underline text-xs mt-1 inline-block">Connect a bank account to see transactions →</Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              {recentTransactions.map((txn, idx) => (
+                <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                      txn.type === 'income'   ? 'bg-green-500' :
+                      txn.type === 'payment'  ? 'bg-blue-500'  :
+                      txn.type === 'plaid'    ? (txn.isCredit ? 'bg-emerald-500' : 'bg-rose-400') :
+                      'bg-orange-400'
+                    }`} />
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-gray-700 dark:text-gray-200 truncate">{txn.name}</p>
+                      {txn.type === 'plaid' && (
+                        <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate">
+                          {txn.pending ? '⏳ Pending · ' : ''}{txn.category}
+                        </p>
+                      )}
+                      {txn.date && (
+                        <p className="text-[10px] text-gray-400 dark:text-gray-500">
+                          {new Date(txn.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <span className={`text-xs font-semibold ml-2 shrink-0 ${
+                    txn.type === 'income' || (txn.type === 'plaid' && txn.isCredit)
+                      ? 'text-green-600 dark:text-green-400'
+                      : 'text-gray-600 dark:text-gray-400'
+                  }`}>
+                    {txn.type === 'plaid' && txn.isCredit ? '+' : txn.type === 'income' ? '+' : ''}-${txn.amount.toFixed(2)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700 mt-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300">{t('Household', 'Hogar')}</h3>
-                <button 
-                  onClick={() => navigate('/members')}
-                  className="text-xs px-3 py-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-                >
-                  {t('Manage', 'Gestionar')}
-                </button>
-              </div>
-              
-              <div className="space-y-3">
-                <button 
-                  onClick={handleMemberButtonClick}
-                  disabled={!canManageMembers()}
-                  className={`w-full flex items-center justify-between p-3 rounded-lg transition-colors ${
-                    canManageMembers() 
-                      ? 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer' 
-                      : 'bg-gray-100 dark:bg-gray-700 cursor-not-allowed opacity-60'
-                  }`}
-                  title={canManageMembers() ? '' : t('Only owners can manage members', 'Solo los propietarios pueden administrar miembros')}
-                >
+        {/* Row 4: Goals + Household — 2 cols */}
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300">{t('Goals & Funds', 'Metas y Fondos')}</h3>
+              <a href="/goals" className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700">{t('View all', 'Ver todo')}</a>
+            </div>
+            {goals.length === 0 ? (
+              <div className="text-xs text-gray-400 dark:text-gray-500 py-3 text-center">{t('No goals yet.', 'Sin objetivos aún.')}</div>
+            ) : (
+              <ul className="space-y-3">
+                {goals.slice(0, 4).map((goal) => {
+                  const key = goal._id || goal.id;
+                  const progress = goal.progressPercent != null ? goal.progressPercent : (goal.target > 0 ? Math.min(100, Math.round((goal.currentBalance / goal.target) * 100)) : null);
+                  return (
+                    <li key={key}>
+                      <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400 mb-1">
+                        <span className="font-medium text-gray-700 dark:text-gray-200">{goal.name}</span>
+                        <span>{progress != null ? `${progress}%` : `$${Number(goal.currentBalance || 0).toFixed(0)}`}</span>
+                      </div>
+                      {goal.target > 0 && (
+                        <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                          <div className="h-1.5 rounded-full bg-teal-500 transition-all" style={{ width: `${progress}%` }} />
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300">{t('Household', 'Hogar')}</h3>
+              <button onClick={() => navigate('/members')} className="text-xs px-3 py-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                {t('Manage', 'Gestionar')}
+              </button>
+            </div>
+            <div className="space-y-3">
+              <button
+                onClick={handleMemberButtonClick}
+                disabled={!canManageMembers()}
+                className={`w-full flex items-center justify-between p-3 rounded-lg transition-colors ${
+                  canManageMembers()
+                    ? 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer'
+                    : 'bg-gray-100 dark:bg-gray-700 cursor-not-allowed opacity-60'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                    <span className="text-blue-600 dark:text-blue-400 text-sm">👥</span>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">{t('Members', 'Miembros')}</div>
+                    <div className="font-semibold text-gray-800 dark:text-gray-200">{household?.members?.length || 0}</div>
+                  </div>
+                </div>
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+              {pendingInvites.length > 0 && (
+                <div className="flex items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-900 rounded-lg border border-yellow-200 dark:border-yellow-700">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                      <span className="text-blue-600 dark:text-blue-400 text-sm">👥</span>
+                    <div className="w-8 h-8 rounded-full bg-yellow-100 dark:bg-yellow-800 flex items-center justify-center">
+                      <span className="text-yellow-600 dark:text-yellow-400 text-sm">✉️</span>
                     </div>
                     <div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">{t('Members', 'Miembros')}</div>
-                      <div className="font-semibold text-gray-800 dark:text-gray-200">{household?.members?.length || 0}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{t('Pending Invites', 'Invitaciones Pendientes')}</div>
+                      <div className="font-semibold text-gray-800 dark:text-gray-200">{pendingInvites.length}</div>
                     </div>
                   </div>
-                  <svg className={`w-5 h-5 ${!canManageMembers() ? 'text-gray-400' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-
-                {pendingInvites.length > 0 && (
-                  <div className="flex items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-900 rounded-lg border border-yellow-200 dark:border-yellow-700">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-yellow-100 dark:bg-yellow-800 flex items-center justify-center">
-                        <span className="text-yellow-600 dark:text-yellow-400 text-sm">✉️</span>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">{t('Pending Invites', 'Invitaciones Pendientes')}</div>
-                        <div className="font-semibold text-gray-800 dark:text-gray-200">{pendingInvites.length}</div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <button
-                  onClick={() => navigate('/members')}
-                  className="w-full px-4 py-2 bg-indigo-50 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-800 transition-colors text-sm font-medium"
-                >
-                  {t('+ Invite Members', '+ Invitar Miembros')}
-                </button>
-              </div>
+                </div>
+              )}
+              <button
+                onClick={() => navigate('/members')}
+                className="w-full px-4 py-2 bg-indigo-50 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-800 transition-colors text-sm font-medium"
+              >
+                {t('+ Invite Members', '+ Invitar Miembros')}
+              </button>
             </div>
-          </aside>
+          </div>
         </div>
 
         {/* Member Details Modal */}

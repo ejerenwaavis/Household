@@ -34,6 +34,7 @@ export default function MobileSidebar({ isOpen, onClose }) {
     { path: '/monthly-overview', label: 'Overview', icon: '📈', color: 'blue' },
     { path: '/members', label: 'Members', icon: '👥', color: 'purple' },
     { path: '/linked-accounts', label: 'Linked Accounts', icon: '🏦', color: 'blue' },
+    { path: '/transactions/review', label: 'Review Transactions', icon: '📋', color: 'blue' },
     { path: '/insights', label: 'AI Insights', icon: '🧠', color: 'purple' },
     { path: '/subscription', label: 'Subscription', icon: '⭐', color: 'purple' },
   ];

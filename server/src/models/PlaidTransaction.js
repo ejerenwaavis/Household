@@ -25,9 +25,8 @@ const plaidTransactionSchema = new mongoose.Schema({
   plaidTransactionId: {
     type: String,
     required: true,
-    unique: true,
     index: true,
-    description: 'Unique ID from Plaid'
+    description: 'Unique ID from Plaid (unique per household, not globally)'
   },
 
   plaidAccountId: {
@@ -161,6 +160,8 @@ const plaidTransactionSchema = new mongoose.Schema({
 });
 
 // Indexes for efficient querying
+// Unique per household: Plaid Sandbox reuses the same transaction IDs across test users
+plaidTransactionSchema.index({ householdId: 1, plaidTransactionId: 1 }, { unique: true });
 plaidTransactionSchema.index({ householdId: 1, date: -1 });
 plaidTransactionSchema.index({ linkedAccountId: 1, date: -1 });
 plaidTransactionSchema.index({ isReconciled: 1, date: -1 });

@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { generateToken, verifyToken } from '../middleware/auth.js';
+import { authMiddleware } from '../middleware/auth.js';
 import { TokenRotationService } from '../services/tokenRotationService.js';
 import { authSchemas, validateBody } from '../utils/validationSchemas.js';
 import User from '../models/User.js';
@@ -231,6 +232,78 @@ router.post('/logout', async (req, res, next) => {
     res.json({ message: 'Logged out successfully' });
   } catch (error) {
     console.error('[AUTH] Logout error:', error.message);
+    next(error);
+  }
+});
+
+/**
+ * PATCH /auth/profile
+ * Update the logged-in user's display name
+ */
+router.patch('/profile', authMiddleware, async (req, res, next) => {
+  try {
+    const { name } = req.body;
+    const { userId, householdId } = req.user;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    const user = await User.findOne({ userId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    user.profile.name = name.trim();
+    user.updatedAt = new Date();
+    await user.save();
+
+    // Also update name in the household members array
+    await Household.updateOne(
+      { householdId, 'members.userId': userId },
+      { $set: { 'members.$.name': name.trim() } }
+    );
+
+    console.log('[AUTH] Profile updated:', { userId, name: name.trim() });
+    res.json({ message: 'Profile updated', name: user.profile.name });
+  } catch (error) {
+    console.error('[AUTH] Profile update error:', error.message);
+    next(error);
+  }
+});
+
+/**
+ * PATCH /auth/change-password
+ * Change password – requires current password verification
+ */
+router.patch('/change-password', authMiddleware, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const { userId } = req.user;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current and new passwords are required' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'New password must be at least 8 characters' });
+    }
+
+    const user = await User.findOne({ userId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const isValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.updatedAt = new Date();
+    // Rotate token version to invalidate all existing tokens
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    await user.save();
+
+    console.log('[AUTH] Password changed:', { userId });
+    res.json({ message: 'Password changed successfully. Please log in again.' });
+  } catch (error) {
+    console.error('[AUTH] Change password error:', error.message);
     next(error);
   }
 });

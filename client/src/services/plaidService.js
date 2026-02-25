@@ -3,20 +3,16 @@
  * Handles all Plaid-related API calls from the frontend
  */
 
-import axios from 'axios';
+import api from './api';
 
-const API_BASE = '/api/plaid';
+const API_BASE = '/plaid';
 
 /**
  * Get all linked accounts for the current household
  */
 export const getLinkedAccounts = async (authToken) => {
   try {
-    const response = await axios.get(`${API_BASE}/linked-accounts`, {
-      headers: {
-        Authorization: `Bearer ${authToken}`
-      }
-    });
+    const response = await api.get(`${API_BASE}/linked-accounts`);
     return response.data;
   } catch (error) {
     console.error('[PlaidService] Error fetching linked accounts:', error);
@@ -29,11 +25,7 @@ export const getLinkedAccounts = async (authToken) => {
  */
 export const getAccountBalance = async (accountId, authToken) => {
   try {
-    const response = await axios.get(`${API_BASE}/account-balance/${accountId}`, {
-      headers: {
-        Authorization: `Bearer ${authToken}`
-      }
-    });
+    const response = await api.get(`${API_BASE}/account-balance/${accountId}`);
     return response.data;
   } catch (error) {
     console.error('[PlaidService] Error fetching account balance:', error);
@@ -46,11 +38,7 @@ export const getAccountBalance = async (accountId, authToken) => {
  */
 export const unlinkAccount = async (accountId, authToken) => {
   try {
-    const response = await axios.delete(`${API_BASE}/unlink/${accountId}`, {
-      headers: {
-        Authorization: `Bearer ${authToken}`
-      }
-    });
+    const response = await api.delete(`${API_BASE}/unlink/${accountId}`);
     return response.data;
   } catch (error) {
     console.error('[PlaidService] Error unlinking account:', error);
@@ -63,11 +51,7 @@ export const unlinkAccount = async (accountId, authToken) => {
  */
 export const getSyncStatus = async (accountId, authToken) => {
   try {
-    const response = await axios.get(`${API_BASE}/sync-status/${accountId}`, {
-      headers: {
-        Authorization: `Bearer ${authToken}`
-      }
-    });
+    const response = await api.get(`${API_BASE}/sync-status/${accountId}`);
     return response.data;
   } catch (error) {
     console.error('[PlaidService] Error fetching sync status:', error);
@@ -80,15 +64,7 @@ export const getSyncStatus = async (accountId, authToken) => {
  */
 export const setDefaultAccount = async (accountId, authToken) => {
   try {
-    const response = await axios.post(
-      `${API_BASE}/set-default/${accountId}`,
-      {},
-      {
-        headers: {
-          Authorization: `Bearer ${authToken}`
-        }
-      }
-    );
+    const response = await api.post(`${API_BASE}/set-default/${accountId}`, {});
     return response.data;
   } catch (error) {
     console.error('[PlaidService] Error setting default account:', error);

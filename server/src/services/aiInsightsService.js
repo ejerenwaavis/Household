@@ -42,9 +42,10 @@ async function collectHouseholdData(householdId, months = 3) {
 // Task 12.1: Spending Patterns Analysis
 // ============================================================
 
-export function analyzeSpendingPatterns(expenses, monthKeys) {
+export function analyzeSpendingPatterns(expenses, monthKeys, incomes = []) {
   const byCategory = {};
   const byMonth = {};
+  const incomeByMonth = {};
 
   for (const exp of expenses) {
     const cat = exp.category || 'Uncategorized';
@@ -52,24 +53,40 @@ export function analyzeSpendingPatterns(expenses, monthKeys) {
     byMonth[exp.month] = (byMonth[exp.month] || 0) + exp.amount;
   }
 
-  // Sort categories by spend
+  for (const inc of incomes) {
+    const total = inc.dailyBreakdown?.reduce((s, d) => s + d.amount, 0) || inc.weeklyTotal || 0;
+    incomeByMonth[inc.month] = (incomeByMonth[inc.month] || 0) + total;
+  }
+
+  const totalSpent = Object.values(byCategory).reduce((a, b) => a + b, 0);
+
+  // Sort categories by spend with percentage
   const topCategories = Object.entries(byCategory)
     .sort(([, a], [, b]) => b - a)
-    .slice(0, 5)
-    .map(([category, total]) => ({ category, total: Math.round(total * 100) / 100 }));
+    .slice(0, 8)
+    .map(([category, total]) => ({
+      category,
+      total: Math.round(total * 100) / 100,
+      percentage: totalSpent > 0 ? Math.round((total / totalSpent) * 10000) / 100 : 0,
+    }));
 
-  // Month over month trend
-  const monthlyTotals = monthKeys.map(m => ({ month: m, total: Math.round((byMonth[m] || 0) * 100) / 100 }));
-  const trend = monthlyTotals.length >= 2
-    ? monthlyTotals[0].total - monthlyTotals[1].total
+  // Month over month combined trend
+  const monthlyTrend = monthKeys.map(m => ({
+    month: m,
+    income: Math.round((incomeByMonth[m] || 0) * 100) / 100,
+    expenses: Math.round((byMonth[m] || 0) * 100) / 100,
+  }));
+
+  const trend = monthlyTrend.length >= 2
+    ? monthlyTrend[0].expenses - monthlyTrend[1].expenses
     : 0;
 
   return {
     topCategories,
-    monthlyTotals,
+    monthlyTrend,
     trend: Math.round(trend * 100) / 100,
     trendDirection: trend > 50 ? 'up' : trend < -50 ? 'down' : 'stable',
-    totalSpent: Math.round(Object.values(byCategory).reduce((a, b) => a + b, 0) * 100) / 100,
+    totalSpent: Math.round(totalSpent * 100) / 100,
   };
 }
 
@@ -231,6 +248,57 @@ export function calculateMetrics(expenses, incomes, fixedExpenses, goals) {
 }
 
 // ============================================================
+// Rule-based Natural Language Summary (always available)
+// ============================================================
+
+function generateRuleBasedSummary(data) {
+  const { metrics, spendingPatterns, budgetRecommendations, anomalies } = data;
+  const { totalIncome, totalExpenses, savingsRate, netSavings } = metrics;
+
+  const top = spendingPatterns.topCategories?.[0];
+  const trend = spendingPatterns.trendDirection;
+
+  const summaryParts = [];
+
+  if (totalIncome > 0) {
+    summaryParts.push(`Your household is bringing in $${totalIncome.toLocaleString()} and spending $${totalExpenses.toLocaleString()} — a savings rate of ${savingsRate.toFixed(1)}%.`);
+  } else {
+    return { summary: 'Add income and expense data to get personalized financial insights.', insights: [] };
+  }
+
+  const insights = [];
+
+  if (savingsRate >= 20) {
+    insights.push({ emoji: '🎉', title: 'Excellent Savings', insight: `You're saving ${savingsRate.toFixed(1)}% of income — well above the recommended 20% target. Consider moving excess savings into investments or accelerating goal funding.` });
+  } else if (savingsRate >= 10) {
+    insights.push({ emoji: '📈', title: 'Good Progress', insight: `At ${savingsRate.toFixed(1)}% savings rate, you're on the right track. A few small adjustments could push you above the 20% benchmark.` });
+  } else {
+    insights.push({ emoji: '⚠️', title: 'Savings Alert', insight: `Your savings rate of ${savingsRate.toFixed(1)}% is below the recommended 20%. Focus on reducing discretionary spending to build your safety net.` });
+  }
+
+  if (top) {
+    const pct = top.percentage.toFixed(1);
+    insights.push({ emoji: '💡', title: `Top Spend: ${top.category}`, insight: `${top.category} makes up ${pct}% of your spending at $${top.total.toLocaleString()}. ${top.percentage > 30 ? 'This is a significant portion — look for opportunities to reduce here.' : 'This looks reasonable.'}` });
+  }
+
+  if (trend === 'up') {
+    insights.push({ emoji: '📊', title: 'Spending Increased', insight: `Your spending is trending up compared to last month ($${Math.abs(spendingPatterns.trend).toLocaleString()} more). Review recent expenses to identify what changed.` });
+  } else if (trend === 'down') {
+    insights.push({ emoji: '✅', title: 'Spending Reduced', insight: `Great job! Your spending is down $${Math.abs(spendingPatterns.trend).toLocaleString()} compared to last month. Keep up the disciplined approach.` });
+  }
+
+  if (anomalies?.length > 0) {
+    insights.push({ emoji: '🔍', title: `${anomalies.length} Unusual Pattern${anomalies.length > 1 ? 's' : ''} Detected`, insight: `${anomalies[0].category} spending is ${anomalies[0].percentIncrease}% above your average. Review this category to ensure no unexpected charges.` });
+  }
+
+  const netLabel = netSavings >= 0 ? `$${netSavings.toLocaleString()} saved this period` : `a $${Math.abs(netSavings).toLocaleString()} shortfall`;
+  summaryParts.push(`You have ${netLabel}.`);
+  if (insights.length > 0 && savingsRate < 20) summaryParts.push('Focus on the recommendations below to improve your financial health.');
+
+  return { summary: summaryParts.join(' '), insights: insights.slice(0, 3) };
+}
+
+// ============================================================
 // OpenAI Enhancement (optional, graceful fallback)
 // ============================================================
 
@@ -244,23 +312,23 @@ Data:
 - Monthly income: $${data.metrics.totalIncome}
 - Monthly expenses: $${data.metrics.totalExpenses}
 - Savings rate: ${data.metrics.savingsRate}%
-- Top spending categories: ${data.patterns.topCategories.map(c => `${c.category} ($${c.total})`).join(', ')}
-- Spending trend: ${data.patterns.trendDirection} (${data.patterns.trend > 0 ? '+' : ''}$${data.patterns.trend} vs last month)
+- Top spending categories: ${data.spendingPatterns.topCategories.map(c => `${c.category} ($${c.total})`).join(', ')}
+- Spending trend: ${data.spendingPatterns.trendDirection} (${data.spendingPatterns.trend > 0 ? '+' : ''}$${data.spendingPatterns.trend} vs last month)
 - Active anomalies: ${data.anomalies.length} unusual spending patterns detected
 
-Respond with a JSON array of exactly 3 objects: [{ "title": "...", "insight": "...", "emoji": "..." }]`;
+Respond with a JSON object: { "summary": "2-3 sentence financial summary", "insights": [{ "title": "...", "insight": "...", "emoji": "..." }] }`;
 
     const completion = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
-      max_tokens: 400,
+      max_tokens: 500,
       response_format: { type: 'json_object' },
     });
 
     const raw = completion.choices[0]?.message?.content;
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : (parsed.insights || parsed.data || null);
+    return { summary: parsed.summary, insights: parsed.insights || [] };
   } catch (err) {
     console.warn('[AIInsights] OpenAI call failed, using rule-based fallback:', err.message);
     return null;
@@ -283,17 +351,31 @@ export async function generateInsights(householdId) {
 
   const { expenses, incomes, fixedExpenses, goals, monthKeys } = await collectHouseholdData(householdId, 3);
 
-  const patterns = analyzeSpendingPatterns(expenses, monthKeys);
+  const spendingPatterns = analyzeSpendingPatterns(expenses, monthKeys, incomes);
   const budget = generateBudgetRecommendations(expenses, incomes, fixedExpenses);
   const anomalies = detectAnomalies(expenses, monthKeys);
   const metrics = calculateMetrics(expenses, incomes, fixedExpenses, goals);
 
-  const result = { patterns, budget, anomalies, metrics };
+  const result = {
+    spendingPatterns,
+    budgetRecommendations: budget.recommendations,
+    budget,
+    anomalies,
+    metrics,
+  };
 
-  // Try OpenAI enhancement
-  const aiSummary = await generateAISummary(result);
-  result.aiSummary = aiSummary;
-  result.aiEnabled = !!aiSummary;
+  // Always generate rule-based summary (fast, reliable)
+  const ruleBasedSummary = generateRuleBasedSummary(result);
+  result.aiSummary = ruleBasedSummary;
+  result.aiEnabled = true; // Always enabled with rule-based
+
+  // Try to enhance with OpenAI if available
+  const aiEnhancement = await generateAISummary(result);
+  if (aiEnhancement) {
+    result.aiSummary = aiEnhancement;
+    result.aiEnhanced = true; // Marks actual OpenAI usage
+  }
+
   result.generatedAt = new Date();
 
   // Cache the result

@@ -146,7 +146,7 @@ export default function InsightsPage() {
   const recommendations = d.budgetRecommendations || [];
   const anomalies = d.anomalies || [];
   const aiSummary = d.aiSummary;
-  const generatedAt = insights?.generatedAt ? new Date(insights.generatedAt).toLocaleString() : null;
+  const generatedAt = d.generatedAt ? new Date(d.generatedAt).toLocaleString() : null;
   const topCategories = patterns.topCategories || [];
 
   const fmt = (v) => {
@@ -165,8 +165,9 @@ export default function InsightsPage() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-1">Financial Insights</h1>
             <p className="text-gray-500 dark:text-gray-400 text-sm">
-              {generatedAt ? `Last updated ${generatedAt}` : 'Powered by AI analysis'}
-              {insights?.aiEnabled && <span className="ml-2 px-2 py-0.5 bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400 rounded-full text-xs font-medium">AI Enhanced</span>}
+              {generatedAt ? `Last updated ${generatedAt}` : 'Powered by Smart Analysis'}
+              {d.aiEnhanced && <span className="ml-2 px-2 py-0.5 bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400 rounded-full text-xs font-medium">✨ AI Enhanced</span>}
+              {d.aiEnabled && !d.aiEnhanced && <span className="ml-2 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 rounded-full text-xs font-medium">💡 Smart Analysis</span>}
             </p>
           </div>
           <div className="flex gap-2">
@@ -219,7 +220,7 @@ export default function InsightsPage() {
               <p className="text-gray-400 text-sm">Not enough transaction history to show trends yet.</p>
             ) : (
               <div className="space-y-2">
-                {patterns.monthlyTrend.slice(-6).map((month) => {
+                {patterns.monthlyTrend.slice(0, 6).map((month) => {
                   const net = (month.income || 0) - (month.expenses || 0);
                   return (
                     <div key={month.month} className="flex items-center justify-between text-sm">
@@ -243,10 +244,22 @@ export default function InsightsPage() {
         {aiSummary && (
           <div className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 border border-purple-200 dark:border-purple-800 rounded-2xl p-6 mb-6">
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-xl">🤖</span>
-              <h2 className="text-lg font-bold text-purple-900 dark:text-purple-300">AI Financial Summary</h2>
+              <span className="text-xl">{d.aiEnhanced ? '🤖' : '💡'}</span>
+              <h2 className="text-lg font-bold text-purple-900 dark:text-purple-300">{d.aiEnhanced ? 'AI Financial Summary' : 'Smart Financial Summary'}</h2>
             </div>
-            <p className="text-purple-900 dark:text-purple-200 text-sm leading-relaxed">{aiSummary}</p>
+            {aiSummary.summary && (
+              <p className="text-purple-900 dark:text-purple-200 text-sm leading-relaxed mb-4">{aiSummary.summary}</p>
+            )}
+            {aiSummary.insights?.length > 0 && (
+              <div className="space-y-2">
+                {aiSummary.insights.map((item, i) => (
+                  <div key={i} className="flex items-start gap-2 text-sm text-purple-800 dark:text-purple-300">
+                    <span>{item.emoji || '💡'}</span>
+                    <div><span className="font-semibold">{item.title}: </span>{item.insight}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -290,8 +303,8 @@ export default function InsightsPage() {
           </div>
         )}
 
-        {/* Empty state */}
-        {!metrics.totalIncome && !metrics.totalExpenses && recommendations.length === 0 && (
+        {/* Empty state - only show when no AI summary was generated */}
+        {!d.aiEnabled && !metrics.totalIncome && !metrics.totalExpenses && recommendations.length === 0 && (
           <div className="text-center py-16 text-gray-400 dark:text-gray-500">
             <div className="text-5xl mb-4">📊</div>
             <p className="text-lg font-medium text-gray-600 dark:text-gray-400">No data to analyze yet</p>

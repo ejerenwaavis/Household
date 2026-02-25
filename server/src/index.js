@@ -334,7 +334,7 @@ app.post('/api/dev/seed-all', strictLimiter, async (req, res) => {
     await Goal.deleteMany({ householdId });
     const goals = await Goal.insertMany([
       { householdId, userId, name: 'Emergency Fund', type: 'Emergency', target: 5000, currentBalance: 1200, monthlyContribution: 500, isActive: true },
-      { householdId, userId, name: 'Vacation Fund', type: 'Vacation', target: 3000, currentBalance: 800, monthlyContribution: 300, isActive: true },
+      { householdId, userId, name: 'Vacation Fund', type: 'Other', target: 3000, currentBalance: 800, monthlyContribution: 300, isActive: true },
       { householdId, userId, name: 'Home Repair Fund', type: 'Project', target: 10000, currentBalance: 2500, monthlyContribution: 400, isActive: true },
     ]);
     results.goals = goals.length;

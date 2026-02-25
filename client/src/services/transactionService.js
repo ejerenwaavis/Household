@@ -3,21 +3,16 @@
  * Handles all transaction-related API calls from the frontend
  */
 
-import axios from 'axios';
+import api from './api';
 
-const API_BASE = '/api/plaid';
+const API_BASE = '/plaid';
 
 /**
  * Get transactions for a specific account or all accounts
  */
 export const getTransactions = async (params, authToken) => {
   try {
-    const response = await axios.get(`${API_BASE}/transactions`, {
-      params,
-      headers: {
-        Authorization: `Bearer ${authToken}`
-      }
-    });
+    const response = await api.get(`${API_BASE}/transactions`, { params });
     return response.data;
   } catch (error) {
     console.error('[TransactionService] Error fetching transactions:', error);
@@ -30,11 +25,7 @@ export const getTransactions = async (params, authToken) => {
  */
 export const getTransaction = async (transactionId, authToken) => {
   try {
-    const response = await axios.get(`${API_BASE}/transactions/${transactionId}`, {
-      headers: {
-        Authorization: `Bearer ${authToken}`
-      }
-    });
+    const response = await api.get(`${API_BASE}/transactions/${transactionId}`);
     return response.data;
   } catch (error) {
     console.error('[TransactionService] Error fetching transaction:', error);
@@ -47,11 +38,7 @@ export const getTransaction = async (transactionId, authToken) => {
  */
 export const updateTransaction = async (transactionId, updates, authToken) => {
   try {
-    const response = await axios.patch(`${API_BASE}/transactions/${transactionId}`, updates, {
-      headers: {
-        Authorization: `Bearer ${authToken}`
-      }
-    });
+    const response = await api.patch(`${API_BASE}/transactions/${transactionId}`, updates);
     return response.data;
   } catch (error) {
     console.error('[TransactionService] Error updating transaction:', error);
@@ -64,12 +51,7 @@ export const updateTransaction = async (transactionId, updates, authToken) => {
  */
 export const getTransactionsSummary = async (params, authToken) => {
   try {
-    const response = await axios.get(`${API_BASE}/transactions-summary`, {
-      params,
-      headers: {
-        Authorization: `Bearer ${authToken}`
-      }
-    });
+    const response = await api.get(`${API_BASE}/transactions-summary`, { params });
     return response.data;
   } catch (error) {
     console.error('[TransactionService] Error fetching summary:', error);

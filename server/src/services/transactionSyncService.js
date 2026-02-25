@@ -32,9 +32,11 @@ export async function syncAccountTransactions(linkedAccount) {
     // Fetch transactions from Plaid
     const response = await PlaidService.getTransactionsPaginated(
       plaidAccessToken,
-      [plaidAccountId],
-      startDate,
-      new Date() // Today
+      {
+        accountIds: [plaidAccountId],
+        startDate,
+        endDate: new Date(),
+      }
     );
 
     if (!response?.transactions) {

@@ -22,6 +22,7 @@ import TransactionReviewPage from './pages/TransactionReviewPage';
 import PricingPage from './pages/PricingPage';
 import SubscriptionPage from './pages/SubscriptionPage';
 import InsightsPage from './pages/InsightsPage';
+import ProfileSettingsPage from './pages/ProfileSettingsPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 console.log('[App] Rendering App component');
@@ -56,6 +57,7 @@ function App() {
                   <Route path="/pricing" element={<PricingPage />} />
                   <Route path="/subscription" element={<SubscriptionPage />} />
                   <Route path="/insights" element={<InsightsPage />} />
+                  <Route path="/settings/profile" element={<ProfileSettingsPage />} />
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 </Route>
               </Routes>

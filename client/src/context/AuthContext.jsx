@@ -63,8 +63,14 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('pendingInvites');
   };
 
+  const updateUser = (updatedFields) => {
+    const updated = { ...user, ...updatedFields };
+    setUser(updated);
+    localStorage.setItem('user', JSON.stringify(updated));
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, pendingInvites, loading, login, logout, switchHousehold, isAuthenticated: !!token }}>
+    <AuthContext.Provider value={{ user, token, pendingInvites, loading, login, logout, switchHousehold, updateUser, isAuthenticated: !!token }}>
       {children}
     </AuthContext.Provider>
   );

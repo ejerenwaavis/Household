@@ -10,6 +10,7 @@ import LinkedAccount from '../models/LinkedAccount.js';
 import PlaidTransaction from '../models/PlaidTransaction.js';
 import User from '../models/User.js';
 import { handlePlaidWebhook } from '../webhooks/plaidWebhook.js';
+import { syncAllTransactions, syncAccountTransactions } from '../services/transactionSyncService.js';
 
 const router = Router();
 
@@ -63,29 +64,35 @@ router.post('/exchange-token', authMiddleware, async (req, res, next) => {
     const accounts = await PlaidService.getAccounts(accessToken);
     console.log('[Plaid Route] Retrieved accounts:', accounts.length);
 
-    // Store linked accounts in database
+    // Store linked accounts in database (upsert to handle re-linking the same institution)
     const linkedAccounts = [];
     
     for (const account of accounts) {
-      const linkedAccount = await LinkedAccount.create({
-        householdId,
-        userId,
-        plaidItemId: itemId,
-        plaidAccessToken: accessToken, // TODO: Encrypt in production
-        plaidInstitutionId: metadata?.institution?.institution_id,
-        accountId: account.accountId,
-        accountName: account.name,
-        accountOfficialName: account.officialName,
-        accountType: account.type,
-        accountSubtype: account.subtype,
-        accountMask: account.mask,
-        currentBalance: account.balances.current,
-        availableBalance: account.balances.available,
-        creditLimit: account.balances.limit,
-        currencyCode: account.balances.isoCurrencyCode,
-        isActive: true,
-        syncStatus: 'pending',
-      });
+      const linkedAccount = await LinkedAccount.findOneAndUpdate(
+        { householdId, plaidItemId: itemId, plaidAccountId: account.accountId },
+        {
+          $set: {
+            userId,
+            plaidAccessToken: accessToken, // TODO: Encrypt in production
+            plaidInstitutionId: metadata?.institution?.institution_id,
+            plaidAccountId: account.accountId,
+            accountName: account.name,
+            accountOfficialName: account.officialName,
+            accountType: account.type,
+            accountSubtype: account.subtype,
+            accountMask: account.mask,
+            currentBalance: account.balances.current,
+            availableBalance: account.balances.available,
+            creditLimit: account.balances.limit,
+            currencyCode: account.balances.isoCurrencyCode,
+            isActive: true,
+            syncStatus: 'pending',
+            updatedAt: new Date(),
+          },
+          $setOnInsert: { linkedAt: new Date() },
+        },
+        { upsert: true, new: true }
+      );
 
       linkedAccounts.push({
         _id: linkedAccount._id,
@@ -448,6 +455,32 @@ router.get('/transactions-summary', authMiddleware, async (req, res, next) => {
   } catch (error) {
     console.error('[Plaid Route] Error fetching summary:', error);
     res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /plaid/sync-now
+ * Manually trigger a full transaction sync for all linked accounts
+ */
+router.post('/sync-now', authMiddleware, async (req, res) => {
+  try {
+    const { householdId } = req.user;
+    const accounts = await LinkedAccount.find({ householdId, isActive: true });
+    if (accounts.length === 0) {
+      return res.json({ message: 'No linked accounts to sync', synced: 0 });
+    }
+    let totalSynced = 0, totalErrors = 0;
+    for (const account of accounts) {
+      try {
+        const result = await syncAccountTransactions(account);
+        totalSynced += result.synced || 0;
+      } catch (e) {
+        totalErrors++;
+      }
+    }
+    res.json({ message: `Sync complete`, synced: totalSynced, errors: totalErrors, accounts: accounts.length });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

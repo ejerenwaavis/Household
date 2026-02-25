@@ -26,7 +26,6 @@ const linkedAccountSchema = new mongoose.Schema({
   plaidItemId: { 
     type: String, 
     required: true, 
-    unique: true,
     index: true,
     description: 'Unique identifier from Plaid for the linked bank connection'
   },
@@ -43,7 +42,7 @@ const linkedAccountSchema = new mongoose.Schema({
   },
 
   // Account details
-  accountId: {
+  plaidAccountId: {
     type: String,
     required: true,
     description: 'Plaid account ID within the item'
@@ -174,5 +173,7 @@ const linkedAccountSchema = new mongoose.Schema({
 // Index for efficient querying
 linkedAccountSchema.index({ householdId: 1, isActive: 1 });
 linkedAccountSchema.index({ userId: 1, createdAt: -1 });
+// Unique per household: two different households can link the same Plaid institution
+linkedAccountSchema.index({ householdId: 1, plaidItemId: 1, plaidAccountId: 1 }, { unique: true });
 
 export default mongoose.model('LinkedAccount', linkedAccountSchema);

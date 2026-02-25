@@ -15,7 +15,11 @@ router.use(authMiddleware);
 router.get('/', async (req, res) => {
   try {
     const insights = await AIInsightsService.generateInsights(req.user.householdId);
-    res.json({ insights });
+    res.json({
+      insights,
+      generatedAt: insights.generatedAt,
+      aiEnabled: insights.aiEnabled,
+    });
   } catch (err) {
     console.error('[Insights GET]', err.message);
     res.status(500).json({ error: err.message });
@@ -27,7 +31,11 @@ router.post('/refresh', async (req, res) => {
   try {
     await AIInsightsService.invalidateCache(req.user.householdId);
     const insights = await AIInsightsService.generateInsights(req.user.householdId);
-    res.json({ insights });
+    res.json({
+      insights,
+      generatedAt: insights.generatedAt,
+      aiEnabled: insights.aiEnabled,
+    });
   } catch (err) {
     console.error('[Insights Refresh]', err.message);
     res.status(500).json({ error: err.message });
