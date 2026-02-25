@@ -29,27 +29,27 @@ export default function EditIncomeModal({ income, members = [], onSave, onClose 
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-md w-full">
-        <h2 className="text-xl font-bold mb-4">{t('Edit Income Entry', 'Editar Entrada de Ingreso')}</h2>
+      <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-2xl max-w-md w-full">
+        <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">{t('Edit Income Entry', 'Editar Entrada de Ingreso')}</h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs text-gray-500">{t('Amount', 'Monto')}</label>
+            <label className="block text-xs text-gray-600 dark:text-gray-300">{t('Amount', 'Monto')}</label>
             <input
               type="number"
               step="0.01"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="mt-1 w-full p-2 border rounded-lg"
+              className="mt-1 w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
             />
           </div>
 
           <div>
-            <label className="block text-xs text-gray-500">{t('Contributor Name', 'Nombre del Contribuyente')}</label>
+            <label className="block text-xs text-gray-600 dark:text-gray-300">{t('Contributor Name', 'Nombre del Contribuyente')}</label>
             <select
               value={contributorName}
               onChange={(e) => setContributorName(e.target.value)}
-              className="mt-1 w-full p-2 border rounded-lg"
+              className="mt-1 w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
             >
               <option value="">-- {t('Select', 'Seleccionar')} --</option>
               {members.map((m) => (
@@ -59,8 +59,8 @@ export default function EditIncomeModal({ income, members = [], onSave, onClose 
           </div>
 
           <div>
-            <label className="block text-xs text-gray-500">{t('Source', 'Fuente')}</label>
-            <select value={source} onChange={(e) => setSource(e.target.value)} className="mt-1 w-full p-2 border rounded-lg">
+            <label className="block text-xs text-gray-600 dark:text-gray-300">{t('Source', 'Fuente')}</label>
+            <select value={source} onChange={(e) => setSource(e.target.value)} className="mt-1 w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white">
               {sources.map((s) => (
                 <option key={s} value={s}>{t(s, s === 'Salary' ? 'Salario' : s === 'Freelance' ? 'Freelance' : s === 'Interest' ? 'Interés' : 'Otro')}</option>
               ))}
@@ -68,13 +68,13 @@ export default function EditIncomeModal({ income, members = [], onSave, onClose 
           </div>
 
           <div>
-            <label className="block text-xs text-gray-500">{t('Description', 'Descripción')}</label>
+            <label className="block text-xs text-gray-600 dark:text-gray-300">{t('Description', 'Descripción')}</label>
             <input
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder={t('Optional', 'Opcional')}
-              className="mt-1 w-full p-2 border rounded-lg"
+              className="mt-1 w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
             />
           </div>
 

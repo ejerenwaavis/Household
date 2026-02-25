@@ -8,10 +8,13 @@ const householdSchema = new mongoose.Schema({
   language: { type: String, enum: ['en', 'es'], default: 'en' },
   members: [{
     userId: { type: String, required: true },
-    role: { type: String, enum: ['owner', 'member', 'viewer'], default: 'member' },
+    role: { type: String, enum: ['owner', 'co-owner', 'manager', 'member', 'viewer'], default: 'member' },
     name: { type: String, required: true },
     email: { type: String },
-    joinedAt: { type: Date, default: Date.now }
+    joinedAt: { type: Date, default: Date.now },
+    responsibilities: [String], // ['bills', 'groceries', 'maintenance', etc.]
+    incomePercentage: { type: Number, min: 0, max: 100, default: 0 }, // Percentage of household income expected from this member
+    incomeAmount: { type: Number, default: 0 } // Actual income amount if separate from percentage
   }],
   subscription: {
     planId: { type: String, enum: ['free', 'basic', 'plus', 'pro'], default: 'free' },
@@ -22,7 +25,9 @@ const householdSchema = new mongoose.Schema({
   },
   settings: {
     sharedView: { type: Boolean, default: true },
-    notificationsEnabled: { type: Boolean, default: true }
+    notificationsEnabled: { type: Boolean, default: true },
+    creditCardOverspendThreshold: { type: Number, default: 500 }, // Amount in dollars above which to flag overspend
+    autoCreateOverspendProject: { type: Number, default: 1000 } // Auto-create project if overspend < this amount, otherwise require approval
   },
   createdAt: { type: Date, default: Date.now }
 });

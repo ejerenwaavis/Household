@@ -53,7 +53,7 @@ export default function GoalForm({ householdId, onCreated }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
+    <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-md border border-gray-100 dark:border-gray-700">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="lg:col-span-2">
           <label className="block text-xs text-gray-500">{t('Goal Name', 'Nombre del Objetivo')}</label>

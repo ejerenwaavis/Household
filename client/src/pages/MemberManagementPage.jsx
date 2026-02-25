@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../context/LanguageContext';
 import Layout from '../components/Layout';
 import HouseholdInviteForm from '../components/HouseholdInviteForm';
+import MemberDetailsModal from '../components/MemberDetailsModal';
 import api from '../services/api';
 
 export default function MemberManagementPage() {
@@ -12,6 +13,7 @@ export default function MemberManagementPage() {
   const [pendingInvites, setPendingInvites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedMember, setSelectedMember] = useState(null);
 
   const fetchData = async () => {
     if (!user?.householdId) return;
@@ -67,6 +69,26 @@ export default function MemberManagementPage() {
   };
 
   const isHeadOfHouse = household?.headOfHouseId?.toString() === user?.userId?.toString();
+  
+  // Role-based access control: Check if user is admin
+  const canManageMembers = () => {
+    if (!household?.members || !user?.userId) {
+      console.log('[MemberManagement] Cannot manage: missing household.members or user.userId', {
+        hasMembers: !!household?.members,
+        userId: user?.userId
+      });
+      return false;
+    }
+    
+    const userMember = household.members.find(m => m.userId === user.userId);
+    console.log('[MemberManagement] User member found:', userMember);
+    
+    // Admin or owner can manage members
+    const canManage = userMember && (userMember.role === 'admin' || userMember.role === 'owner');
+    console.log('[MemberManagement] Can manage members?', canManage, 'User role:', userMember?.role);
+    
+    return canManage;
+  };
 
   if (loading) {
     return (
@@ -86,28 +108,28 @@ export default function MemberManagementPage() {
       <div className="max-w-5xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             {t('Member Management', 'Gestión de Miembros')}
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-gray-600 dark:text-gray-300 mt-2">
             {t('Manage household members and invitations', 'Gestionar miembros e invitaciones del hogar')}
           </p>
         </div>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-700 text-sm">{error}</p>
+          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">
+            <p className="text-red-700 dark:text-red-300 text-sm">{error}</p>
           </div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Current Members */}
-          <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-md border border-gray-100 dark:border-gray-700">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-800">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
                 {t('Household Members', 'Miembros del Hogar')}
               </h2>
-              <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+              <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full text-sm font-medium">
                 {household?.members?.length || 0}
               </span>
             </div>
@@ -115,38 +137,63 @@ export default function MemberManagementPage() {
             {household?.members && household.members.length > 0 ? (
               <div className="space-y-3">
                 {household.members.map((member, idx) => (
-                  <div
+                  <button
                     key={idx}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
+                    onClick={() => canManageMembers() && setSelectedMember(member)}
+                    className={`w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg transition ${
+                      canManageMembers()
+                        ? 'hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer hover:shadow-md'
+                        : 'cursor-default'
+                    }`}
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
-                        <span className="text-indigo-600 font-semibold text-sm">
+                    <div className="flex items-center gap-3 flex-1 text-left">
+                      <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center flex-shrink-0">
+                        <span className="text-indigo-600 dark:text-indigo-300 font-semibold text-sm">
                           {member.name?.charAt(0).toUpperCase() || '?'}
                         </span>
                       </div>
                       <div>
-                        <div className="font-medium text-gray-800">{member.name || 'Member'}</div>
-                        <div className="text-sm text-gray-500">{member.email || ''}</div>
+                        <div className="font-medium text-gray-900 dark:text-white">{member.name || 'Member'}</div>
+                        <div className="text-sm text-gray-500 dark:text-gray-400">{member.email || ''}</div>
+                        {member.incomePercentage > 0 && (
+                          <div className="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5">
+                            {t('Income Contribution', 'Contribución de Ingresos')}: {member.incomePercentage}%
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-shrink-0">
                       {member.role && (
                         <span className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs font-medium">
                           {member.role}
                         </span>
                       )}
-                      {isHeadOfHouse && member.role !== 'owner' && (
-                        <button
-                          onClick={() => handleRemoveMember(member.userId)}
-                          className="text-red-600 hover:text-red-800 text-sm px-2"
-                          title={t('Remove member', 'Eliminar miembro')}
-                        >
-                          ✕
-                        </button>
-                      )}
+                      {canManageMembers() ? (
+                        <>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedMember(member);
+                            }}
+                            className="text-indigo-600 hover:text-indigo-800 text-sm px-2"
+                            title={t('Edit member', 'Editar miembro')}
+                          >
+                            ✎
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveMember(member.userId);
+                            }}
+                            className="text-red-600 hover:text-red-800 text-sm px-2"
+                            title={t('Remove member', 'Eliminar miembro')}
+                          >
+                            ✕
+                          </button>
+                        </>
+                      ) : null}
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             ) : (
@@ -158,18 +205,41 @@ export default function MemberManagementPage() {
 
           {/* Invite Members */}
           <div>
-            <HouseholdInviteForm 
-              householdId={user?.householdId} 
-              onInviteSent={fetchData}
-            />
+            {canManageMembers() ? (
+              <HouseholdInviteForm 
+                householdId={user?.householdId} 
+                onInviteSent={fetchData}
+              />
+            ) : (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-md border border-gray-100 dark:border-gray-700">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+                  {t('Invite Members', 'Invitar Miembros')}
+                </h2>
+                <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
+                  <div className="flex gap-3">
+                    <svg className="w-5 h-5 text-amber-600 dark:text-amber-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <div>
+                      <h3 className="font-semibold text-amber-900 dark:text-amber-100 mb-1">
+                        {t('Higher Access Privilege Required', 'Se Requiere Mayor Privilegio de Acceso')}
+                      </h3>
+                      <p className="text-sm text-amber-800 dark:text-amber-200">
+                        {t('Only the household owner can invite members. Contact the household owner to add new members.', 'Solo el propietario del hogar puede invitar a miembros. Comuníquese con el propietario del hogar para agregar nuevos miembros.')}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Pending Invites */}
         {pendingInvites.length > 0 && (
-          <div className="mt-6 bg-white rounded-2xl p-6 shadow-md border border-gray-100">
+          <div className="mt-6 bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-md border border-gray-100 dark:border-gray-700">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-800">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
                 {t('Pending Invitations', 'Invitaciones Pendientes')}
               </h2>
               <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-sm font-medium">
@@ -185,7 +255,7 @@ export default function MemberManagementPage() {
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-gray-800">{invite.email}</span>
+                      <span className="font-medium text-gray-900 dark:text-white">{invite.email}</span>
                       <span className="px-2 py-0.5 bg-yellow-200 text-yellow-800 rounded text-xs">
                         {t('Pending', 'Pendiente')}
                       </span>
@@ -210,7 +280,7 @@ export default function MemberManagementPage() {
                     >
                       {t('Copy Link', 'Copiar Enlace')}
                     </button>
-                    {isHeadOfHouse && (
+                    {canManageMembers() && (
                       <button
                         onClick={() => handleCancelInvite(invite._id)}
                         className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
@@ -223,6 +293,26 @@ export default function MemberManagementPage() {
               ))}
             </div>
           </div>
+        )}
+
+        {/* Member Details Modal */}
+        {selectedMember && (
+          <MemberDetailsModal
+            member={selectedMember}
+            householdId={user?.householdId}
+            allMembers={household?.members}
+            onClose={() => setSelectedMember(null)}
+            onSave={(updatedMember) => {
+              // Update household members list
+              setHousehold(prev => ({
+                ...prev,
+                members: prev.members.map(m => 
+                  m.userId === updatedMember.userId ? updatedMember : m
+                )
+              }));
+              setSelectedMember(null);
+            }}
+          />
         )}
       </div>
     </Layout>

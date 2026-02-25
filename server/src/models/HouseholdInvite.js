@@ -9,6 +9,7 @@ const householdInviteSchema = new mongoose.Schema({
   email: { type: String, required: true, lowercase: true },
   inviteToken: { type: String, unique: true, sparse: true }, // One-time use token
   status: { type: String, enum: ['pending', 'accepted', 'declined'], default: 'pending' },
+  isExistingUser: { type: Boolean, default: false }, // True if user already has account
   acceptedAt: Date,
   expiresAt: { type: Date, default: () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }, // 30 days
   createdAt: { type: Date, default: Date.now },

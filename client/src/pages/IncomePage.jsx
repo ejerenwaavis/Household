@@ -5,6 +5,7 @@ import IncomeList from '../components/IncomeList';
 import IncomeViewModal from '../components/IncomeViewModal';
 import IncomeSplitConfig from '../components/IncomeSplitConfig';
 import IncomeSplitExpectations from '../components/IncomeSplitExpectations';
+import HouseholdMembersWidget from '../components/HouseholdMembersWidget';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../context/LanguageContext';
 import api from '../services/api';
@@ -109,45 +110,58 @@ export default function IncomePage(){
     <Layout>
       <div className="max-w-4xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold">{t('Add Income', 'Agregar Ingreso')}</h1>
-          <p className="text-sm text-gray-500">{t('Quickly log daily income for your household.', 'Registra los ingresos diarios de tu hogar.')}</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('Add Income', 'Agregar Ingreso')}</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{t('Quickly log daily income for your household.', 'Registra los ingresos diarios de tu hogar.')}</p>
         </div>
+
+        {/* Link bank account prompt */}
+        <a
+          href="/linked-accounts"
+          className="flex items-center gap-3 mb-6 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors group"
+        >
+          <span className="text-2xl">🏦</span>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">Link your bank account</p>
+            <p className="text-xs text-blue-600 dark:text-blue-400">Automatically sync transactions instead of entering them manually</p>
+          </div>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-500 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+        </a>
 
         <IncomeForm householdId={user?.householdId} onCreated={handleCreated} />
 
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
-            <h2 className="text-lg font-medium mb-3">{t('This week', 'Esta semana')}</h2>
+            <h2 className="text-lg font-medium mb-3 text-gray-900 dark:text-white">{t('This week', 'Esta semana')}</h2>
             <IncomeList householdId={user?.householdId} loading={loading} entries={weekEntries} members={members} refresh={fetchCurrentMonth} />
           </div>
 
           <aside>
-            <h2 className="text-lg font-medium mb-3">{t('This month', 'Este mes')}</h2>
+            <h2 className="text-lg font-medium mb-3 text-gray-900 dark:text-white">{t('This month', 'Este mes')}</h2>
             <div className="space-y-4">
               <div
                 onClick={() => setViewingWeek('month')}
-                className="bg-white rounded-2xl p-4 shadow-md border border-gray-100 cursor-pointer hover:shadow-lg hover:border-indigo-300 transition-all"
+                className="bg-white dark:bg-gray-750 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700 cursor-pointer hover:shadow-lg hover:border-indigo-300 dark:hover:border-indigo-500 transition-all"
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-sm text-gray-500">{t('Total Income', 'Total de Ingresos')}</div>
-                    <div className="text-2xl font-semibold text-gray-800">${monthTotal.toFixed(2)}</div>
-                    <div className="text-xs text-gray-400 mt-1">{t('Click to view all', 'Clic para ver todo')}</div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">{t('Total Income', 'Total de Ingresos')}</div>
+                    <div className="text-2xl font-semibold text-gray-700 dark:text-gray-300">${monthTotal.toFixed(2)}</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">{t('Click to view all', 'Clic para ver todo')}</div>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl p-4 shadow-md border border-gray-100">
-                <div className="text-sm text-gray-600 font-medium mb-2">{t('Weekly totals', 'Totales semanales')}</div>
+              <div className="bg-white dark:bg-gray-750 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700">
+                <div className="text-sm text-gray-600 dark:text-gray-400 font-medium mb-2">{t('Weekly totals', 'Totales semanales')}</div>
                 <div className="grid grid-cols-4 gap-2 text-center text-sm">
                   {weeklyTotals.map((w, i) => (
                     <div
                       key={i}
                       onClick={() => setViewingWeek(i + 1)}
-                      className="bg-gray-50 p-3 rounded cursor-pointer hover:bg-indigo-100 hover:text-indigo-700 transition-colors"
+                      className="bg-gray-50 dark:bg-gray-700 p-3 rounded cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
                     >
-                      <div className="text-xs text-gray-400">W{i+1}</div>
-                      <div className="font-semibold text-gray-800">${Number(w || 0).toFixed(2)}</div>
+                      <div className="text-xs text-gray-400 dark:text-gray-500">W{i+1}</div>
+                      <div className="font-semibold text-gray-700 dark:text-gray-300">${Number(w || 0).toFixed(2)}</div>
                     </div>
                   ))}
                 </div>
@@ -166,10 +180,14 @@ export default function IncomePage(){
             />
           </div>
 
-          <aside>
+          <aside className="space-y-6">
             <IncomeSplitConfig 
               householdId={user?.householdId}
               onUpdate={fetchCurrentMonth}
+            />
+            
+            <HouseholdMembersWidget 
+              householdId={user?.householdId}
             />
           </aside>
         </div>

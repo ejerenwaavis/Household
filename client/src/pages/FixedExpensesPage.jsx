@@ -52,8 +52,8 @@ export default function FixedExpensesPage(){
       <div className="max-w-4xl mx-auto">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">{t('Fixed Expenses', 'Gastos Fijos')}</h1>
-            <p className="text-sm text-gray-500">{t('Manage your recurring monthly bills and fixed payments.', 'Gestiona tus gastos recurrentes mensuales y pagos fijos.')}</p>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('Fixed Expenses', 'Gastos Fijos')}</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{t('Manage your recurring monthly bills and fixed payments.', 'Gestiona tus gastos recurrentes mensuales y pagos fijos.')}</p>
           </div>
         </div>
 
@@ -68,7 +68,7 @@ export default function FixedExpensesPage(){
         </div>
 
         <div className="mt-8">
-          <h2 className="text-lg font-medium mb-4">{t('Your Fixed Expenses', 'Tus Gastos Fijos')}</h2>
+          <h2 className="text-lg font-medium mb-4 text-gray-900 dark:text-white">{t('Your Fixed Expenses', 'Tus Gastos Fijos')}</h2>
           
           {/* Payment summary widget */}
           <div className="mb-6">

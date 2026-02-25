@@ -40,8 +40,8 @@ export default function GoalsPage() {
     <Layout>
       <div className="max-w-4xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold">{t('Goals & Funds', 'Metas y Fondos')}</h1>
-          <p className="text-sm text-gray-500">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('Goals & Funds', 'Metas y Fondos')}</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             {t('Track your savings goals and financial targets.', 'Rastrea tus metas de ahorro y objetivos financieros.')}
           </p>
         </div>

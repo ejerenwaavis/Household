@@ -46,11 +46,11 @@ export default function ExpenseList({ householdId, entries = [], members = [], l
   };
 
   return (
-    <div className="bg-white rounded-2xl p-4 shadow-md border border-gray-100">
+    <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700">
       {loading ? (
-        <div className="text-gray-500">{t('Loading…', 'Cargando…')}</div>
+        <div className="text-gray-500 dark:text-gray-400">{t('Loading…', 'Cargando…')}</div>
       ) : entries.length === 0 ? (
-        <div className="text-sm text-gray-500">{t('No expenses yet.', 'Sin gastos aún.')}</div>
+        <div className="text-sm text-gray-500 dark:text-gray-400">{t('No expenses yet.', 'Sin gastos aún.')}</div>
       ) : (
         <ul className="space-y-3">
           {entries.map((e, i) => {
@@ -65,11 +65,11 @@ export default function ExpenseList({ householdId, entries = [], members = [], l
             return (
               <li key={key} className="flex justify-between items-center">
                 <div>
-                  <div className="text-sm font-medium text-gray-700">{categoryText} • <span className="text-orange-600">{contributorText}</span></div>
-                  <div className="text-xs text-gray-400">{descriptionText} {dateText ? `• ${dateText}` : ''}</div>
+                  <div className="text-sm font-medium text-gray-900 dark:text-white">{categoryText} • <span className="text-orange-600 dark:text-orange-400">{contributorText}</span></div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">{descriptionText} {dateText ? `• ${dateText}` : ''}</div>
                 </div>
                 <div className="flex items-center space-x-4">
-                  <div className="text-sm font-semibold text-gray-800">${amountVal.toFixed(2)}</div>
+                  <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">${amountVal.toFixed(2)}</div>
                   <button onClick={()=>handleEdit(e)} className="text-sm text-indigo-600">{t('Edit', 'Editar')}</button>
                   <button onClick={()=>handleDelete(e)} className="text-sm text-red-600">{t('Delete', 'Eliminar')}</button>
                 </div>

@@ -49,14 +49,14 @@ export default function HouseholdInviteForm({ householdId, onInviteSent }) {
   };
 
   return (
-    <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
-      <h3 className="text-lg font-semibold text-gray-800 mb-4">
+    <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-md border border-gray-100 dark:border-gray-700">
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
         {t('Invite Members to Household', 'Invitar Miembros al Hogar')}
       </h3>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm text-gray-600 mb-2">
+          <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">
             {t('Email Address', 'Dirección de Email')}
           </label>
           <input
@@ -64,32 +64,32 @@ export default function HouseholdInviteForm({ householdId, onInviteSent }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="member@example.com"
-            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500"
+            className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
           />
         </div>
 
         <button
           type="submit"
           disabled={loading}
-          className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-60 transition-colors"
+          className="w-full px-4 py-2 bg-indigo-600 dark:bg-indigo-700 text-white rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-800 disabled:opacity-60 transition-colors"
         >
           {loading ? t('Sending...', 'Enviando...') : t('Send Invite', 'Enviar Invitación')}
         </button>
       </form>
 
       {message && (
-        <div className={`mt-4 p-4 rounded-lg ${
+        <div className={`mt-4 p-4 rounded-lg transition-colors ${
           message.type === 'success' 
-            ? 'bg-green-50 text-green-700 border border-green-200' 
-            : 'bg-red-50 text-red-700 border border-red-200'
+            ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700' 
+            : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-700'
         }`}>
           <div className="text-sm font-medium">{message.text}</div>
         </div>
       )}
 
       {inviteToken && (
-        <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-          <div className="text-sm text-blue-700 font-medium mb-2">
+        <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+          <div className="text-sm text-blue-700 dark:text-blue-300 font-medium mb-2">
             {t('Invite Link', 'Enlace de Invitación')}:
           </div>
           <div className="flex items-center gap-2">
@@ -97,16 +97,16 @@ export default function HouseholdInviteForm({ householdId, onInviteSent }) {
               type="text"
               readOnly
               value={generateInviteLink()}
-              className="flex-1 p-2 bg-white border rounded text-xs"
+              className="flex-1 p-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-xs dark:text-white"
             />
             <button
               onClick={copyToClipboard}
-              className="px-3 py-2 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+              className="px-3 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded text-xs hover:bg-blue-700 dark:hover:bg-blue-800 transition-colors"
             >
               {t('Copy', 'Copiar')}
             </button>
           </div>
-          <div className="text-xs text-blue-600 mt-2">
+          <div className="text-xs text-blue-600 dark:text-blue-300 mt-2">
             {t('Link expires in 30 days', 'El enlace expira en 30 días')}
           </div>
         </div>
