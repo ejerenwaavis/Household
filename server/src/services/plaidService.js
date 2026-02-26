@@ -32,7 +32,7 @@ export class PlaidService {
         client_name: 'Household Budget Manager',
         language: 'en',
         // Only request transactions permission (can expand later)
-        products: ['auth', 'transactions'],
+        products: ['transactions'],
         country_codes: ['US', 'CA', 'GB'],
         // Can also add webhook_url here if needed
       });
