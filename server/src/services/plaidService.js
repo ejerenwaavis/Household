@@ -43,8 +43,9 @@ export class PlaidService {
         expiration: response.data.expiration,
       };
     } catch (error) {
-      console.error('[Plaid] Error creating link token:', error);
-      throw new Error(`Failed to create Plaid link token: ${error.message}`);
+      const plaidError = error.response?.data || error.message;
+      console.error('[Plaid] Error creating link token:', JSON.stringify(plaidError));
+      throw new Error(`Failed to create Plaid link token: ${JSON.stringify(plaidError)}`);
     }
   }
 
