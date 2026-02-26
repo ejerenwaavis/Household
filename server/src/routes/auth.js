@@ -1,6 +1,8 @@
 import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import speakeasy from 'speakeasy';
+import QRCode from 'qrcode';
 import { generateToken, verifyToken } from '../middleware/auth.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { TokenRotationService } from '../services/tokenRotationService.js';
@@ -114,6 +116,23 @@ router.post('/login', validateBody(authSchemas.login), async (req, res, next) =>
     if (!isValidPassword) {
       console.warn('[AUTH] Login failed: Invalid password', { email });
       return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // If MFA is enabled, require a TOTP code
+    if (user.mfaEnabled) {
+      const { mfaToken } = req.body;
+      if (!mfaToken) {
+        return res.status(206).json({ mfaRequired: true });
+      }
+      const valid = speakeasy.totp.verify({
+        secret: user.mfaSecret,
+        encoding: 'base32',
+        token: mfaToken,
+        window: 1,
+      });
+      if (!valid) {
+        return res.status(401).json({ error: 'Invalid MFA code' });
+      }
     }
 
     const household = await Household.findOne({ householdId: user.householdId });
@@ -304,6 +323,105 @@ router.patch('/change-password', authMiddleware, async (req, res, next) => {
     res.json({ message: 'Password changed successfully. Please log in again.' });
   } catch (error) {
     console.error('[AUTH] Change password error:', error.message);
+    next(error);
+  }
+});
+
+/**
+ * POST /auth/mfa/setup
+ * Generate a new TOTP secret and return QR code for the user to scan
+ */
+router.post('/mfa/setup', authMiddleware, async (req, res, next) => {
+  try {
+    const { userId, email } = req.user;
+    const user = await User.findOne({ userId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const secret = speakeasy.generateSecret({
+      name: `Household Budget (${email})`,
+      issuer: 'Household Budget',
+      length: 20,
+    });
+
+    // Store secret temporarily (not enabled yet until verified)
+    user.mfaSecret = secret.base32;
+    await user.save();
+
+    const qrCodeDataURL = await QRCode.toDataURL(secret.otpauth_url);
+
+    res.json({ qrCode: qrCodeDataURL, secret: secret.base32 });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /auth/mfa/verify
+ * Verify TOTP token and enable MFA for the account
+ */
+router.post('/mfa/verify', authMiddleware, async (req, res, next) => {
+  try {
+    const { userId } = req.user;
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ error: 'Token is required' });
+
+    const user = await User.findOne({ userId });
+    if (!user || !user.mfaSecret) return res.status(400).json({ error: 'MFA setup not initiated' });
+
+    const valid = speakeasy.totp.verify({
+      secret: user.mfaSecret,
+      encoding: 'base32',
+      token,
+      window: 1,
+    });
+
+    if (!valid) return res.status(401).json({ error: 'Invalid code, please try again' });
+
+    user.mfaEnabled = true;
+    await user.save();
+
+    res.json({ message: 'MFA enabled successfully' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /auth/mfa/disable
+ * Disable MFA — requires password confirmation
+ */
+router.post('/mfa/disable', authMiddleware, async (req, res, next) => {
+  try {
+    const { userId } = req.user;
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ error: 'Password is required' });
+
+    const user = await User.findOne({ userId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) return res.status(401).json({ error: 'Incorrect password' });
+
+    user.mfaEnabled = false;
+    user.mfaSecret = null;
+    await user.save();
+
+    res.json({ message: 'MFA disabled successfully' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /auth/mfa/status
+ * Return whether MFA is enabled for current user
+ */
+router.get('/mfa/status', authMiddleware, async (req, res, next) => {
+  try {
+    const user = await User.findOne({ userId: req.user.userId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ mfaEnabled: user.mfaEnabled });
+  } catch (error) {
     next(error);
   }
 });

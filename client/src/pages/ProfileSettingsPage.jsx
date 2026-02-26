@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useAuth } from '../hooks/useAuth';
@@ -23,6 +23,22 @@ export default function ProfileSettingsPage() {
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [showCurrentPw, setShowCurrentPw] = useState(false);
   const [showNewPw, setShowNewPw] = useState(false);
+
+  // MFA state
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [mfaStep, setMfaStep] = useState('idle'); // 'idle' | 'setup' | 'disable'
+  const [mfaQR, setMfaQR] = useState('');
+  const [mfaToken, setMfaToken] = useState('');
+  const [mfaDisablePassword, setMfaDisablePassword] = useState('');
+  const [mfaMsg, setMfaMsg] = useState('');
+  const [mfaErr, setMfaErr] = useState('');
+  const [mfaLoading, setMfaLoading] = useState(false);
+
+  useEffect(() => {
+    api.get('/auth/mfa/status')
+      .then(({ data }) => setMfaEnabled(data.mfaEnabled))
+      .catch(() => {});
+  }, []);
 
   const handleProfileSave = async (e) => {
     e.preventDefault();
@@ -63,6 +79,52 @@ export default function ProfileSettingsPage() {
       setPasswordErr(err.response?.data?.error || 'Failed to change password');
     } finally {
       setPasswordLoading(false);
+    }
+  };
+
+  const handleMfaSetup = async () => {
+    setMfaErr(''); setMfaMsg(''); setMfaLoading(true);
+    try {
+      const { data } = await api.post('/auth/mfa/setup');
+      setMfaQR(data.qrCode);
+      setMfaStep('setup');
+    } catch (err) {
+      setMfaErr(err.response?.data?.error || 'Failed to start MFA setup');
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleMfaVerify = async (e) => {
+    e.preventDefault();
+    setMfaErr(''); setMfaLoading(true);
+    try {
+      await api.post('/auth/mfa/verify', { token: mfaToken });
+      setMfaEnabled(true);
+      setMfaStep('idle');
+      setMfaQR('');
+      setMfaToken('');
+      setMfaMsg('Two-factor authentication is now enabled.');
+    } catch (err) {
+      setMfaErr(err.response?.data?.error || 'Invalid code, please try again');
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleMfaDisable = async (e) => {
+    e.preventDefault();
+    setMfaErr(''); setMfaLoading(true);
+    try {
+      await api.post('/auth/mfa/disable', { password: mfaDisablePassword });
+      setMfaEnabled(false);
+      setMfaStep('idle');
+      setMfaDisablePassword('');
+      setMfaMsg('Two-factor authentication has been disabled.');
+    } catch (err) {
+      setMfaErr(err.response?.data?.error || 'Failed to disable MFA');
+    } finally {
+      setMfaLoading(false);
     }
   };
 
@@ -220,6 +282,122 @@ export default function ProfileSettingsPage() {
               {passwordLoading ? 'Changing…' : 'Change Password'}
             </button>
           </form>
+        </div>
+
+        {/* Two-Factor Authentication */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            Two-Factor Authentication
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Use an authenticator app (Google Authenticator, Authy, etc.) to add an extra layer of security.
+          </p>
+          {mfaMsg && <div className="text-sm text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-3 py-2 rounded-lg mb-3">{mfaMsg}</div>}
+          {mfaErr && <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg mb-3">{mfaErr}</div>}
+
+          {mfaEnabled ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                  <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  MFA Active
+                </span>
+              </div>
+              {mfaStep !== 'disable' ? (
+                <button
+                  type="button"
+                  onClick={() => { setMfaStep('disable'); setMfaErr(''); setMfaMsg(''); }}
+                  className="px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                >
+                  Disable MFA
+                </button>
+              ) : (
+                <form onSubmit={handleMfaDisable} className="space-y-3">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Enter your password to confirm disabling MFA:</p>
+                  <input
+                    type="password"
+                    value={mfaDisablePassword}
+                    onChange={e => setMfaDisablePassword(e.target.value)}
+                    placeholder="Current password"
+                    required
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={mfaLoading || !mfaDisablePassword}
+                      className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {mfaLoading ? 'Disabling…' : 'Confirm Disable'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setMfaStep('idle'); setMfaErr(''); setMfaDisablePassword(''); }}
+                      className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {mfaStep === 'idle' && (
+                <button
+                  type="button"
+                  onClick={handleMfaSetup}
+                  disabled={mfaLoading}
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {mfaLoading ? 'Loading…' : 'Enable MFA'}
+                </button>
+              )}
+              {mfaStep === 'setup' && (
+                <div className="space-y-4">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Scan this QR code with your authenticator app, then enter the 6-digit code to confirm.
+                  </p>
+                  <img src={mfaQR} alt="MFA QR Code" className="w-40 h-40 border border-gray-200 dark:border-gray-600 rounded-lg" />
+                  <form onSubmit={handleMfaVerify} className="space-y-3">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]{6}"
+                      maxLength={6}
+                      value={mfaToken}
+                      onChange={e => setMfaToken(e.target.value.replace(/\D/g, ''))}
+                      placeholder="6-digit code"
+                      required
+                      autoFocus
+                      className="w-40 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white text-center text-lg tracking-widest focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="submit"
+                        disabled={mfaLoading || mfaToken.length !== 6}
+                        className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        {mfaLoading ? 'Verifying…' : 'Verify & Enable'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setMfaStep('idle'); setMfaQR(''); setMfaToken(''); setMfaErr(''); }}
+                        className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Account Info (read-only) */}

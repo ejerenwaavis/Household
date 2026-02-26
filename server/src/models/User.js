@@ -28,6 +28,8 @@ const userSchema = new mongoose.Schema({
     type: String,
     description: 'IP address of last login'
   },
+  mfaEnabled: { type: Boolean, default: false },
+  mfaSecret: { type: String, default: null },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
