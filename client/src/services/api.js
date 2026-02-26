@@ -7,10 +7,15 @@ const getAPIURL = () => {
     return import.meta.env.VITE_API_URL;
   }
   
-  // Otherwise, use the same host as the frontend but port 5000 (for development)
-  const protocol = window.location.protocol; // http: or https:
-  const hostname = window.location.hostname; // localhost or IP address
-  const apiPort = 5000; // Backend port
+  // Production (Namecheap): Apache proxies /api → Node app internally, so use relative path
+  // Development fallback: same host + port 4000
+  if (window.location.hostname !== 'localhost' && !window.location.hostname.match(/^(10\.|192\.168\.|172\.)/)) {
+    return '/api'; // production — Apache reverse proxy handles routing
+  }
+  
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname;
+  const apiPort = import.meta.env.VITE_API_PORT || 4000;
   
   return `${protocol}//${hostname}:${apiPort}/api`;
 };
