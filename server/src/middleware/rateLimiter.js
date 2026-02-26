@@ -8,16 +8,19 @@ import rateLimit from 'express-rate-limit';
 
 /**
  * General API rate limiter
- * 100 requests per 15 minutes per IP
+ * 500 requests per 15 minutes per IP
  */
 export const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  max: 500,
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => process.env.NODE_ENV === 'development',
-  keyGenerator: (req) => req.headers['x-forwarded-for'] || req.ip
+  keyGenerator: (req) => {
+    const forwarded = req.headers['x-forwarded-for'];
+    return forwarded ? forwarded.split(',')[0].trim() : req.ip;
+  }
 });
 
 /**
@@ -40,16 +43,19 @@ export const authLimiter = rateLimit({
 
 /**
  * Moderate rate limiter for create/update operations
- * 30 requests per 15 minutes per IP
+ * 200 requests per 15 minutes per IP
  */
 export const createLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
-  message: 'Too many create/update requests, please try again later.',
+  max: 200,
+  message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => process.env.NODE_ENV === 'development',
-  keyGenerator: (req) => req.headers['x-forwarded-for'] || req.ip
+  keyGenerator: (req) => {
+    const forwarded = req.headers['x-forwarded-for'];
+    return forwarded ? forwarded.split(',')[0].trim() : req.ip;
+  }
 });
 
 /**
