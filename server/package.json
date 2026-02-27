@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node --env-file-if-exists .env --watch src/index.js",
+    "dev": "node --env-file=.env --watch src/index.js",
     "build": "echo 'No build needed for pure Node.js'",
     "start": "node src/index.js",
     "test": "jest --detectOpenHandles",
