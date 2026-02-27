@@ -1,4 +1,12 @@
-import 'dotenv/config';
+// Load .env only in development — production env vars are set via the hosting panel
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    await import('dotenv/config');
+  } catch {
+    // dotenv not installed locally, continuing without it
+  }
+}
+
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
