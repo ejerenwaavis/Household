@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import HouseholdSwitcher from './HouseholdSwitcher';
 import { useAuth } from '../hooks/useAuth';
+import NotificationBell from './NotificationBell';
 
 export default function Topbar({ onMobileMenuToggle }){
   const { user } = useAuth();
@@ -47,6 +48,9 @@ export default function Topbar({ onMobileMenuToggle }){
         </div>
 
         <div className="flex items-center space-x-2 sm:space-x-4">
+          {/* Notification Bell */}
+          <NotificationBell />
+
           {/* Refresh Button */}
           <button 
             onClick={handleRefresh}

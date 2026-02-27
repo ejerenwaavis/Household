@@ -1,6 +1,7 @@
-import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useNotifications } from '../hooks/useNotifications';
 import api from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -15,12 +16,12 @@ function Spinner() {
 
 export default function PendingTasksWidget() {
   const { pendingInvites, login, user, token } = useAuth();
+  const { inviteModalOpen, setInviteModalOpen } = useNotifications();
   const { t } = useLanguage();
   const [processing, setProcessing] = useState(null);
   const [error, setError] = useState(null);
-  const [dismissed, setDismissed] = useState(false);
 
-  if (!pendingInvites || pendingInvites.length === 0 || dismissed) {
+  if (!pendingInvites || pendingInvites.length === 0 || !inviteModalOpen) {
     return null;
   }
 
@@ -67,7 +68,7 @@ export default function PendingTasksWidget() {
       {/* Blurred backdrop — sits behind the modal, above the page */}
       <div
         className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[9998]"
-        onClick={() => setDismissed(true)}
+        onClick={() => setInviteModalOpen(false)}
       />
 
       {/* Modal card — centered, above the backdrop */}
@@ -96,7 +97,7 @@ export default function PendingTasksWidget() {
                 </div>
               </div>
               <button
-                onClick={() => setDismissed(true)}
+                onClick={() => setInviteModalOpen(false)}
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
                 aria-label="Dismiss"
               >
@@ -146,7 +147,7 @@ export default function PendingTasksWidget() {
             </div>
 
             <p className="text-center text-xs text-gray-400 dark:text-gray-500 mt-3">
-              {t('Click outside to dismiss for now', 'Haz clic fuera para cerrar por ahora')}
+              {t('Click outside to dismiss — find it again in the 🔔 bell', 'Haz clic fuera para cerrar — encuéntralo en la 🔔 campana')}
             </p>
           </div>
         </div>
