@@ -263,10 +263,96 @@ export default function DashboardPage(){
 
         <PendingTasksWidget tasks={payments} />
 
-        {/* Row 2: Spending chart + quick widgets */}
+        {/* Row 2: Spending chart + Recent Activity (left) | quick widgets (right) */}
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 flex flex-col gap-4">
             <SpendingByCategoryWidget expenses={expensesData} />
+
+            {/* Recent Activity — list style */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md border border-gray-100 dark:border-gray-700 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">{t('Recent Activity', 'Actividad Reciente')}</h3>
+                <div className="flex items-center gap-3">
+                  {plaidTransactions.length > 0 && (
+                    <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full font-medium">
+                      🏦 {plaidTransactions.length} bank txns
+                    </span>
+                  )}
+                  <Link to="/transactions/review" className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                    View all →
+                  </Link>
+                </div>
+              </div>
+              {recentTransactions.length === 0 ? (
+                <div className="text-center py-8 text-sm text-gray-400 dark:text-gray-500">
+                  <p>No recent activity yet.</p>
+                  <Link to="/linked-accounts" className="text-blue-500 hover:underline text-xs mt-1 inline-block">Connect a bank account to see transactions →</Link>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {recentTransactions.map((txn, idx) => {
+                    const isCredit = txn.type === 'income' || (txn.type === 'plaid' && txn.isCredit);
+                    return (
+                      <div key={idx} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${
+                          txn.type === 'income'  ? 'bg-green-500' :
+                          txn.type === 'payment' ? 'bg-blue-500'  :
+                          txn.type === 'plaid'   ? (txn.isCredit ? 'bg-emerald-500' : 'bg-rose-400') :
+                          'bg-orange-400'
+                        }`} />
+                        <div className="w-14 shrink-0">
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {txn.date ? new Date(txn.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
+                          </p>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{txn.name}</p>
+                          {txn.type === 'plaid' && txn.category && (
+                            <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
+                              {txn.pending ? '⏳ Pending · ' : ''}{txn.category}
+                            </p>
+                          )}
+                        </div>
+                        <span className={`text-sm font-semibold shrink-0 ${isCredit ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                          {isCredit ? '+' : '-'}${txn.amount.toFixed(2)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Goals & Funds */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300">{t('Goals & Funds', 'Metas y Fondos')}</h3>
+                <a href="/goals" className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700">{t('View all', 'Ver todo')}</a>
+              </div>
+              {goals.length === 0 ? (
+                <div className="text-xs text-gray-400 dark:text-gray-500 py-3 text-center">{t('No goals yet.', 'Sin objetivos aún.')}</div>
+              ) : (
+                <ul className="space-y-3">
+                  {goals.slice(0, 6).map((goal) => {
+                    const key = goal._id || goal.id;
+                    const progress = goal.progressPercent != null ? goal.progressPercent : (goal.target > 0 ? Math.min(100, Math.round((goal.currentBalance / goal.target) * 100)) : null);
+                    return (
+                      <li key={key}>
+                        <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400 mb-1">
+                          <span className="font-medium text-gray-700 dark:text-gray-200">{goal.name}</span>
+                          <span>{progress != null ? `${progress}%` : `$${Number(goal.currentBalance || 0).toFixed(0)}`}</span>
+                        </div>
+                        {goal.target > 0 && (
+                          <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                            <div className="h-1.5 rounded-full bg-teal-500 transition-all" style={{ width: `${progress}%` }} />
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-col gap-4">
@@ -348,148 +434,56 @@ export default function DashboardPage(){
                 );
               })()}
             </div>
-          </div>
-        </div>
 
-        {/* Row 3: Recent Activity — full width with bank transactions */}
-        <div className="mt-4 bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-md border border-gray-100 dark:border-gray-700">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">{t('Recent Activity', 'Actividad Reciente')}</h3>
-            <div className="flex items-center gap-3">
-              {plaidTransactions.length > 0 && (
-                <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full font-medium">
-                  🏦 {plaidTransactions.length} bank txns
-                </span>
-              )}
-              <Link to="/transactions/review" className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
-                View all →
-              </Link>
-            </div>
-          </div>
-          {recentTransactions.length === 0 ? (
-            <div className="text-center py-6 text-sm text-gray-400 dark:text-gray-500">
-              <p>No recent activity yet.</p>
-              <Link to="/linked-accounts" className="text-blue-500 hover:underline text-xs mt-1 inline-block">Connect a bank account to see transactions →</Link>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-              {recentTransactions.map((txn, idx) => (
-                <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                      txn.type === 'income'   ? 'bg-green-500' :
-                      txn.type === 'payment'  ? 'bg-blue-500'  :
-                      txn.type === 'plaid'    ? (txn.isCredit ? 'bg-emerald-500' : 'bg-rose-400') :
-                      'bg-orange-400'
-                    }`} />
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-gray-700 dark:text-gray-200 truncate">{txn.name}</p>
-                      {txn.type === 'plaid' && (
-                        <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate">
-                          {txn.pending ? '⏳ Pending · ' : ''}{txn.category}
-                        </p>
-                      )}
-                      {txn.date && (
-                        <p className="text-[10px] text-gray-400 dark:text-gray-500">
-                          {new Date(txn.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        </p>
-                      )}
+            {/* Household Members */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300">{t('Household', 'Hogar')}</h3>
+                <button onClick={() => navigate('/members')} className="text-xs px-3 py-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                  {t('Manage', 'Gestionar')}
+                </button>
+              </div>
+              <div className="space-y-2">
+                <button
+                  onClick={handleMemberButtonClick}
+                  disabled={!canManageMembers()}
+                  className={`w-full flex items-center justify-between p-2.5 rounded-lg transition-colors ${
+                    canManageMembers()
+                      ? 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer'
+                      : 'bg-gray-100 dark:bg-gray-700 cursor-not-allowed opacity-60'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                      <span className="text-blue-600 dark:text-blue-400 text-xs">👥</span>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{t('Members', 'Miembros')}</div>
+                      <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{household?.members?.length || 0}</div>
                     </div>
                   </div>
-                  <span className={`text-xs font-semibold ml-2 shrink-0 ${
-                    txn.type === 'income' || (txn.type === 'plaid' && txn.isCredit)
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-gray-600 dark:text-gray-400'
-                  }`}>
-                    {txn.type === 'plaid' && txn.isCredit ? '+' : txn.type === 'income' ? '+' : ''}-${txn.amount.toFixed(2)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Row 4: Goals + Household — 2 cols */}
-        <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300">{t('Goals & Funds', 'Metas y Fondos')}</h3>
-              <a href="/goals" className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700">{t('View all', 'Ver todo')}</a>
-            </div>
-            {goals.length === 0 ? (
-              <div className="text-xs text-gray-400 dark:text-gray-500 py-3 text-center">{t('No goals yet.', 'Sin objetivos aún.')}</div>
-            ) : (
-              <ul className="space-y-3">
-                {goals.slice(0, 4).map((goal) => {
-                  const key = goal._id || goal.id;
-                  const progress = goal.progressPercent != null ? goal.progressPercent : (goal.target > 0 ? Math.min(100, Math.round((goal.currentBalance / goal.target) * 100)) : null);
-                  return (
-                    <li key={key}>
-                      <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400 mb-1">
-                        <span className="font-medium text-gray-700 dark:text-gray-200">{goal.name}</span>
-                        <span>{progress != null ? `${progress}%` : `$${Number(goal.currentBalance || 0).toFixed(0)}`}</span>
-                      </div>
-                      {goal.target > 0 && (
-                        <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
-                          <div className="h-1.5 rounded-full bg-teal-500 transition-all" style={{ width: `${progress}%` }} />
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300">{t('Household', 'Hogar')}</h3>
-              <button onClick={() => navigate('/members')} className="text-xs px-3 py-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
-                {t('Manage', 'Gestionar')}
-              </button>
-            </div>
-            <div className="space-y-3">
-              <button
-                onClick={handleMemberButtonClick}
-                disabled={!canManageMembers()}
-                className={`w-full flex items-center justify-between p-3 rounded-lg transition-colors ${
-                  canManageMembers()
-                    ? 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer'
-                    : 'bg-gray-100 dark:bg-gray-700 cursor-not-allowed opacity-60'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                    <span className="text-blue-600 dark:text-blue-400 text-sm">👥</span>
-                  </div>
-                  <div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">{t('Members', 'Miembros')}</div>
-                    <div className="font-semibold text-gray-800 dark:text-gray-200">{household?.members?.length || 0}</div>
-                  </div>
-                </div>
-                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-              {pendingInvites.length > 0 && (
-                <div className="flex items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-900 rounded-lg border border-yellow-200 dark:border-yellow-700">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-yellow-100 dark:bg-yellow-800 flex items-center justify-center">
-                      <span className="text-yellow-600 dark:text-yellow-400 text-sm">✉️</span>
+                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+                {pendingInvites.length > 0 && (
+                  <div className="flex items-center gap-2 p-2.5 bg-yellow-50 dark:bg-yellow-900 rounded-lg border border-yellow-200 dark:border-yellow-700">
+                    <div className="w-7 h-7 rounded-full bg-yellow-100 dark:bg-yellow-800 flex items-center justify-center">
+                      <span className="text-yellow-600 dark:text-yellow-400 text-xs">✉️</span>
                     </div>
                     <div>
                       <div className="text-xs text-gray-500 dark:text-gray-400">{t('Pending Invites', 'Invitaciones Pendientes')}</div>
-                      <div className="font-semibold text-gray-800 dark:text-gray-200">{pendingInvites.length}</div>
+                      <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{pendingInvites.length}</div>
                     </div>
                   </div>
-                </div>
-              )}
-              <button
-                onClick={() => navigate('/members')}
-                className="w-full px-4 py-2 bg-indigo-50 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-800 transition-colors text-sm font-medium"
-              >
-                {t('+ Invite Members', '+ Invitar Miembros')}
-              </button>
+                )}
+                <button
+                  onClick={() => navigate('/members')}
+                  className="w-full px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-800 transition-colors text-xs font-medium"
+                >
+                  {t('+ Invite Members', '+ Invitar Miembros')}
+                </button>
+              </div>
             </div>
           </div>
         </div>
