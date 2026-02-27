@@ -23,5 +23,10 @@ export default function ProtectedRoute({ children }) {
     return <Navigate to="/unauthorized" replace />;
   }
 
+  // New users who haven't completed onboarding get guided through setup.
+  if (user?.onboardingCompleted === false) {
+    return <Navigate to="/onboarding" replace />;
+  }
+
   return children ? children : <Outlet />;
 }

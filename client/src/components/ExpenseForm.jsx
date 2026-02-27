@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../hooks/useAuth';
+import ReceiptUploadButton from './ReceiptUploadButton';
 
 export default function ExpenseForm({ householdId, onCreated }){
   const { t } = useLanguage();
@@ -14,6 +15,8 @@ export default function ExpenseForm({ householdId, onCreated }){
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [userRole, setUserRole] = useState(null);
+  const [scanResult, setScanResult] = useState(null);
+  const [scanError, setScanError] = useState(null);
 
   const categories = ['Food', 'Groceries', 'Gas', 'Entertainment', 'Dining', 'Shopping', 'Utilities', 'Transportation', 'Medical', 'Other'];
 
@@ -44,11 +47,21 @@ export default function ExpenseForm({ householdId, onCreated }){
     fetchMembers();
   }, [householdId, user]);
 
+  const handleScanComplete = (data) => {
+    setScanResult(data);
+    setScanError(null);
+    if (data.amount)    setAmount(String(data.amount));
+    if (data.category)  setCategory(data.category);
+    if (data.merchant)  setDescription(data.merchant);
+  };
+
   const reset = () => { 
     setAmount(''); 
     setCategory('Food'); 
     setDescription(''); 
-    setError(null); 
+    setError(null);
+    setScanResult(null);
+    setScanError(null);
   };
 
   const handleSubmit = async (e) => {
@@ -94,6 +107,24 @@ export default function ExpenseForm({ householdId, onCreated }){
           </p>
         </div>
       )}
+
+      {/* Receipt scanner */}
+      <div className="mb-3 flex items-center gap-3">
+        <ReceiptUploadButton
+          onScanComplete={handleScanComplete}
+          onError={(msg) => setScanError(msg)}
+        />
+        {scanResult && (
+          <span className="text-xs text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg">
+            ✅ Receipt scanned — form pre-filled. Review &amp; submit.
+          </span>
+        )}
+        {scanError && (
+          <span className="text-xs text-red-600 bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg">
+            ⚠️ {scanError}
+          </span>
+        )}
+      </div>
 
       <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-md border border-gray-100 dark:border-gray-700">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">

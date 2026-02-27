@@ -90,7 +90,7 @@ router.post('/register', validateBody(authSchemas.register), async (req, res, ne
     const refreshToken = TokenRotationService.generateRefreshToken(user._id, 0);
 
     res.status(201).json({
-      user: { userId, email, name, householdId, householdName },
+      user: { userId, email, name, householdId, householdName, onboardingCompleted: false },
       accessToken,
       refreshToken,
       expiresIn: 900, // 15 minutes in seconds
@@ -178,6 +178,7 @@ router.post('/login', validateBody(authSchemas.login), async (req, res, next) =>
         name: user.profile.name,
         householdId: user.householdId,
         householdName: household.householdName,
+        onboardingCompleted: user.onboardingCompleted || false,
       },
       accessToken,
       refreshToken,

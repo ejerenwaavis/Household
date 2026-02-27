@@ -30,6 +30,7 @@ const userSchema = new mongoose.Schema({
   },
   mfaEnabled: { type: Boolean, default: false },
   mfaSecret: { type: String, default: null },
+  onboardingCompleted: { type: Boolean, default: false },
   passkeys: [{
     credentialID: { type: String, required: true },
     publicKey: { type: String, required: true },

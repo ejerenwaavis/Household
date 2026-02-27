@@ -44,6 +44,8 @@ import taskReminderRouter from './routes/taskReminder.js';
 import plaidRouter from './routes/plaid.js';
 import subscriptionRouter from './routes/subscription.js';
 import insightsRouter from './routes/insights.js';
+import onboardingRouter from './routes/onboarding.js';
+import receiptRouter from './routes/receipt.js';
 import webhookRouter from './routes/webhook.js';
 
 // Import models
@@ -165,6 +167,8 @@ app.use('/api/tasks', createLimiter, taskReminderRouter);
 app.use('/api/plaid', createLimiter, plaidRouter);
 app.use('/api/subscription', createLimiter, subscriptionRouter);
 app.use('/api/insights', createLimiter, insightsRouter);
+app.use('/api/onboarding', createLimiter, onboardingRouter);
+app.use('/api/receipts', createLimiter, receiptRouter);
 
 // ============================================================
 // Development-only Routes (strict limiting)
