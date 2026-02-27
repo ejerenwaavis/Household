@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { startAuthentication } from '@simplewebauthn/browser';
 import { useAuth } from '../hooks/useAuth';
 import api from '../services/api';
 
@@ -105,6 +106,24 @@ export default function LoginPage() {
       navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.error || 'Invalid MFA code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePasskeyLogin = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const { data: options } = await api.post('/auth/passkey/login/start', { email: form.email });
+      const { challengeUserId, ...authOptions } = options;
+      const credential = await startAuthentication({ optionsJSON: authOptions });
+      const { data } = await api.post('/auth/passkey/login/finish', { ...credential, challengeUserId });
+      login(data.user, data.accessToken, data.pendingInvites || []);
+      localStorage.setItem('refreshToken', data.refreshToken);
+      navigate('/dashboard');
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Passkey sign-in failed');
     } finally {
       setLoading(false);
     }
@@ -220,6 +239,24 @@ export default function LoginPage() {
                 className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition disabled:opacity-50"
               >
                 {loading ? 'Logging in...' : 'Login'}
+              </button>
+
+              <div className="flex items-center gap-3 my-1">
+                <hr className="flex-1 border-gray-200" />
+                <span className="text-xs text-gray-400">or</span>
+                <hr className="flex-1 border-gray-200" />
+              </div>
+
+              <button
+                type="button"
+                onClick={handlePasskeyLogin}
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2 border border-gray-300 hover:border-gray-400 text-gray-700 font-medium py-2 px-4 rounded-lg transition disabled:opacity-50"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                </svg>
+                {loading ? 'Waiting...' : 'Sign in with Passkey'}
               </button>
             </form>
 

@@ -3,6 +3,12 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
+import {
+  generateRegistrationOptions,
+  verifyRegistrationResponse,
+  generateAuthenticationOptions,
+  verifyAuthenticationResponse,
+} from '@simplewebauthn/server';
 import { generateToken, verifyToken } from '../middleware/auth.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { TokenRotationService } from '../services/tokenRotationService.js';
@@ -10,6 +16,7 @@ import { authSchemas, validateBody } from '../utils/validationSchemas.js';
 import User from '../models/User.js';
 import Household from '../models/Household.js';
 import HouseholdInvite from '../models/HouseholdInvite.js';
+import PasskeyChallenge from '../models/PasskeyChallenge.js';
 
 const router = Router();
 
@@ -421,6 +428,256 @@ router.get('/mfa/status', authMiddleware, async (req, res, next) => {
     const user = await User.findOne({ userId: req.user.userId });
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({ mfaEnabled: user.mfaEnabled });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ─── Passkey / WebAuthn Routes ───────────────────────────────────────────────
+
+const RP_ID = process.env.RP_ID || 'household.aceddivision.com';
+const RP_NAME = 'Household Budget';
+const ORIGIN = process.env.FRONTEND_URL || 'https://household.aceddivision.com';
+
+/**
+ * POST /auth/passkey/register/start
+ * Generate registration options (user must be logged in)
+ */
+router.post('/passkey/register/start', authMiddleware, async (req, res, next) => {
+  try {
+    const user = await User.findOne({ userId: req.user.userId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const options = await generateRegistrationOptions({
+      rpName: RP_NAME,
+      rpID: RP_ID,
+      userID: new TextEncoder().encode(user.userId),
+      userName: user.email,
+      userDisplayName: user.profile.name,
+      attestationType: 'none',
+      excludeCredentials: user.passkeys.map(pk => ({
+        id: pk.credentialID,
+        transports: pk.transports,
+      })),
+      authenticatorSelection: {
+        residentKey: 'required',
+        userVerification: 'required',
+      },
+    });
+
+    await PasskeyChallenge.findOneAndUpdate(
+      { userId: user.userId },
+      { challenge: options.challenge },
+      { upsert: true, new: true }
+    );
+
+    res.json(options);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /auth/passkey/register/finish
+ * Verify registration and save credential
+ */
+router.post('/passkey/register/finish', authMiddleware, async (req, res, next) => {
+  try {
+    const user = await User.findOne({ userId: req.user.userId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const challengeDoc = await PasskeyChallenge.findOne({ userId: user.userId });
+    if (!challengeDoc) return res.status(400).json({ error: 'Challenge expired, please try again' });
+
+    const { name, ...credential } = req.body;
+
+    let verification;
+    try {
+      verification = await verifyRegistrationResponse({
+        response: credential,
+        expectedChallenge: challengeDoc.challenge,
+        expectedOrigin: ORIGIN,
+        expectedRPID: RP_ID,
+      });
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    await PasskeyChallenge.deleteOne({ userId: user.userId });
+
+    if (!verification.verified) return res.status(400).json({ error: 'Verification failed' });
+
+    const { registrationInfo } = verification;
+    user.passkeys.push({
+      credentialID: registrationInfo.credential.id,
+      publicKey: Buffer.from(registrationInfo.credential.publicKey).toString('base64'),
+      counter: registrationInfo.credential.counter,
+      deviceType: registrationInfo.credentialDeviceType,
+      backedUp: registrationInfo.credentialBackedUp,
+      transports: credential.response?.transports ?? [],
+      name: name || 'Passkey',
+    });
+    await user.save();
+
+    res.json({ message: 'Passkey registered successfully' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /auth/passkey/login/start
+ * Generate authentication options (no auth required — this IS the login)
+ */
+router.post('/passkey/login/start', async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    // If email provided, scope to that user's credentials; otherwise discoverable
+    let allowCredentials = [];
+    let challengeUserId = 'anonymous';
+
+    if (email) {
+      const user = await User.findOne({ email: email.toLowerCase().trim() });
+      if (user && user.passkeys.length > 0) {
+        allowCredentials = user.passkeys.map(pk => ({
+          id: pk.credentialID,
+          transports: pk.transports,
+        }));
+        challengeUserId = user.userId;
+      }
+    }
+
+    const options = await generateAuthenticationOptions({
+      rpID: RP_ID,
+      userVerification: 'required',
+      allowCredentials,
+    });
+
+    await PasskeyChallenge.findOneAndUpdate(
+      { userId: challengeUserId },
+      { challenge: options.challenge },
+      { upsert: true, new: true }
+    );
+
+    res.json({ ...options, challengeUserId });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /auth/passkey/login/finish
+ * Verify authentication and issue JWT
+ */
+router.post('/passkey/login/finish', async (req, res, next) => {
+  try {
+    const { challengeUserId, ...credential } = req.body;
+
+    // Find user by credential ID
+    const user = await User.findOne({ 'passkeys.credentialID': credential.id });
+    if (!user) return res.status(401).json({ error: 'Passkey not recognised' });
+
+    const passkey = user.passkeys.find(pk => pk.credentialID === credential.id);
+
+    const lookupId = challengeUserId || user.userId;
+    const challengeDoc = await PasskeyChallenge.findOne({ userId: lookupId });
+    if (!challengeDoc) return res.status(400).json({ error: 'Challenge expired, please try again' });
+
+    let verification;
+    try {
+      verification = await verifyAuthenticationResponse({
+        response: credential,
+        expectedChallenge: challengeDoc.challenge,
+        expectedOrigin: ORIGIN,
+        expectedRPID: RP_ID,
+        credential: {
+          id: passkey.credentialID,
+          publicKey: Buffer.from(passkey.publicKey, 'base64'),
+          counter: passkey.counter,
+          transports: passkey.transports,
+        },
+      });
+    } catch (err) {
+      return res.status(401).json({ error: err.message });
+    }
+
+    await PasskeyChallenge.deleteOne({ userId: lookupId });
+
+    if (!verification.verified) return res.status(401).json({ error: 'Authentication failed' });
+
+    // Update counter to prevent replay attacks
+    passkey.counter = verification.authenticationInfo.newCounter;
+    user.lastLoginAt = new Date();
+    user.lastLoginIp = req.ip;
+    await user.save();
+
+    const household = await Household.findOne({ householdId: user.householdId });
+
+    const tokenPayload = {
+      userId: user.userId,
+      email: user.email,
+      householdId: user.householdId,
+      role: user.role,
+      tokenVersion: user.tokenVersion,
+    };
+
+    const accessToken = generateToken(tokenPayload, '15m');
+    const refreshToken = generateToken({ ...tokenPayload, type: 'refresh' }, '7d');
+
+    res.json({
+      user: {
+        userId: user.userId,
+        email: user.email,
+        name: user.profile.name,
+        role: user.role,
+        householdId: user.householdId,
+        householdName: household?.householdName,
+      },
+      accessToken,
+      refreshToken,
+      pendingInvites: [],
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /auth/passkey/list
+ * List registered passkeys for the logged-in user
+ */
+router.get('/passkey/list', authMiddleware, async (req, res, next) => {
+  try {
+    const user = await User.findOne({ userId: req.user.userId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json(user.passkeys.map(pk => ({
+      credentialID: pk.credentialID,
+      name: pk.name,
+      deviceType: pk.deviceType,
+      backedUp: pk.backedUp,
+      createdAt: pk.createdAt,
+    })));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /auth/passkey/:credentialID
+ * Remove a passkey
+ */
+router.delete('/passkey/:credentialID', authMiddleware, async (req, res, next) => {
+  try {
+    const user = await User.findOne({ userId: req.user.userId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const before = user.passkeys.length;
+    user.passkeys = user.passkeys.filter(pk => pk.credentialID !== req.params.credentialID);
+    if (user.passkeys.length === before) return res.status(404).json({ error: 'Passkey not found' });
+
+    await user.save();
+    res.json({ message: 'Passkey removed' });
   } catch (error) {
     next(error);
   }

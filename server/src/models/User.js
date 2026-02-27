@@ -30,6 +30,16 @@ const userSchema = new mongoose.Schema({
   },
   mfaEnabled: { type: Boolean, default: false },
   mfaSecret: { type: String, default: null },
+  passkeys: [{
+    credentialID: { type: String, required: true },
+    publicKey: { type: String, required: true },
+    counter: { type: Number, default: 0 },
+    deviceType: { type: String },
+    backedUp: { type: Boolean, default: false },
+    transports: [{ type: String }],
+    name: { type: String, default: 'Passkey' },
+    createdAt: { type: Date, default: Date.now },
+  }],
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

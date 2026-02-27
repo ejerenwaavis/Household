@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { startRegistration } from '@simplewebauthn/browser';
 import Layout from '../components/Layout';
 import { useAuth } from '../hooks/useAuth';
 import api from '../services/api';
@@ -38,7 +39,18 @@ export default function ProfileSettingsPage() {
     api.get('/auth/mfa/status')
       .then(({ data }) => setMfaEnabled(data.mfaEnabled))
       .catch(() => {});
+    api.get('/auth/passkey/list')
+      .then(({ data }) => setPasskeys(data))
+      .catch(() => {});
   }, []);
+
+  // Passkey state
+  const [passkeys, setPasskeys] = useState([]);
+  const [passkeyName, setPasskeyName] = useState('');
+  const [passkeyStep, setPasskeyStep] = useState('idle'); // 'idle' | 'naming'
+  const [passkeyMsg, setPasskeyMsg] = useState('');
+  const [passkeyErr, setPasskeyErr] = useState('');
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
 
   const handleProfileSave = async (e) => {
     e.preventDefault();
@@ -125,6 +137,35 @@ export default function ProfileSettingsPage() {
       setMfaErr(err.response?.data?.error || 'Failed to disable MFA');
     } finally {
       setMfaLoading(false);
+    }
+  };
+
+  const handlePasskeyRegister = async () => {
+    setPasskeyErr(''); setPasskeyMsg(''); setPasskeyLoading(true);
+    try {
+      const { data: options } = await api.post('/auth/passkey/register/start');
+      const credential = await startRegistration({ optionsJSON: options });
+      await api.post('/auth/passkey/register/finish', { ...credential, name: passkeyName || 'Passkey' });
+      const { data } = await api.get('/auth/passkey/list');
+      setPasskeys(data);
+      setPasskeyStep('idle');
+      setPasskeyName('');
+      setPasskeyMsg('Passkey registered successfully.');
+    } catch (err) {
+      setPasskeyErr(err.response?.data?.error || err.message || 'Registration failed');
+    } finally {
+      setPasskeyLoading(false);
+    }
+  };
+
+  const handlePasskeyDelete = async (credentialID) => {
+    setPasskeyErr(''); setPasskeyMsg('');
+    try {
+      await api.delete(`/auth/passkey/${encodeURIComponent(credentialID)}`);
+      setPasskeys(prev => prev.filter(pk => pk.credentialID !== credentialID));
+      setPasskeyMsg('Passkey removed.');
+    } catch (err) {
+      setPasskeyErr(err.response?.data?.error || 'Failed to remove passkey');
     }
   };
 
@@ -396,6 +437,85 @@ export default function ProfileSettingsPage() {
                   </form>
                 </div>
               )}
+            </div>
+          )}
+        </div>
+
+        {/* Passkeys */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+            </svg>
+            Passkeys
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Sign in with Face ID, Touch ID, or Windows Hello — no password needed.
+          </p>
+          {passkeyMsg && <div className="text-sm text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-3 py-2 rounded-lg mb-3">{passkeyMsg}</div>}
+          {passkeyErr && <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg mb-3">{passkeyErr}</div>}
+
+          {passkeys.length > 0 && (
+            <ul className="space-y-2 mb-4">
+              {passkeys.map(pk => (
+                <li key={pk.credentialID} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 border border-gray-100 dark:border-gray-700">
+                  <div className="flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{pk.name}</p>
+                      <p className="text-xs text-gray-400">{pk.deviceType === 'multiDevice' ? 'Synced (iCloud/Google)' : 'Device-bound'} · Added {new Date(pk.createdAt).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handlePasskeyDelete(pk.credentialID)}
+                    className="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400 transition-colors"
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {passkeyStep === 'idle' ? (
+            <button
+              type="button"
+              onClick={() => { setPasskeyStep('naming'); setPasskeyErr(''); setPasskeyMsg(''); }}
+              className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              Add Passkey
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600 dark:text-gray-400">Give this passkey a name (e.g. "MacBook", "iPhone"):</p>
+              <input
+                type="text"
+                value={passkeyName}
+                onChange={e => setPasskeyName(e.target.value)}
+                placeholder="My Passkey"
+                maxLength={40}
+                className="w-full sm:w-64 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handlePasskeyRegister}
+                  disabled={passkeyLoading}
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {passkeyLoading ? 'Waiting for device…' : 'Register Passkey'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setPasskeyStep('idle'); setPasskeyName(''); setPasskeyErr(''); }}
+                  className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
         </div>
