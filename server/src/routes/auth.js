@@ -17,6 +17,19 @@ import User from '../models/User.js';
 import Household from '../models/Household.js';
 import HouseholdInvite from '../models/HouseholdInvite.js';
 import PasskeyChallenge from '../models/PasskeyChallenge.js';
+import LinkedAccount from '../models/LinkedAccount.js';
+import PlaidTransaction from '../models/PlaidTransaction.js';
+import Income from '../models/Income.js';
+import Expense from '../models/Expense.js';
+import FixedExpense from '../models/FixedExpense.js';
+import FixedExpensePayment from '../models/FixedExpensePayment.js';
+import Goal from '../models/Goal.js';
+import GoalContribution from '../models/GoalContribution.js';
+import TaskReminder from '../models/TaskReminder.js';
+import InsightCache from '../models/InsightCache.js';
+import Subscription from '../models/Subscription.js';
+import PlaidService from '../services/plaidService.js';
+import * as StripeService from '../services/stripeService.js';
 
 const router = Router();
 
@@ -90,7 +103,7 @@ router.post('/register', validateBody(authSchemas.register), async (req, res, ne
     const refreshToken = TokenRotationService.generateRefreshToken(user._id, 0);
 
     res.status(201).json({
-      user: { userId, email, name, householdId, householdName, onboardingCompleted: false },
+      user: { userId, email, name, householdId, householdName, onboardingCompleted: false, mfaEnabled: false, passkeyCount: 0 },
       accessToken,
       refreshToken,
       expiresIn: 900, // 15 minutes in seconds
@@ -179,6 +192,8 @@ router.post('/login', validateBody(authSchemas.login), async (req, res, next) =>
         householdId: user.householdId,
         householdName: household.householdName,
         onboardingCompleted: user.onboardingCompleted || false,
+        mfaEnabled: user.mfaEnabled || false,
+        passkeyCount: user.passkeys?.length || 0,
       },
       accessToken,
       refreshToken,
@@ -680,6 +695,85 @@ router.delete('/passkey/:credentialID', authMiddleware, async (req, res, next) =
 
     await user.save();
     res.json({ message: 'Passkey removed' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /auth/account
+ * Permanently delete the calling user's account.
+ * Steps:
+ *   1. Verify password
+ *   2. Revoke all Plaid access tokens linked to this user
+ *   3. If user is the household owner → cancel Stripe subscription + delete household data
+ *      Otherwise → remove user from household member list
+ *   4. Delete all user-scoped documents
+ *   5. Delete User record
+ */
+router.delete('/account', authMiddleware, async (req, res, next) => {
+  try {
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ error: 'Password is required to delete your account' });
+
+    const user = await User.findOne({ userId: req.user.userId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) return res.status(401).json({ error: 'Incorrect password' });
+
+    const { userId, householdId } = user;
+
+    // ── 1. Revoke Plaid access tokens ────────────────────────────────────────
+    const linkedAccounts = await LinkedAccount.find({ userId });
+    // Collect unique access tokens and revoke them
+    const uniqueTokens = [...new Set(linkedAccounts.map(a => a.plaidAccessToken).filter(Boolean))];
+    await Promise.allSettled(uniqueTokens.map(token => PlaidService.removeItem(token)));
+
+    // ── 2. Household handling ─────────────────────────────────────────────────
+    const household = await Household.findOne({ householdId });
+    const isOwner = household?.members?.some(m => m.userId === userId && m.role === 'owner');
+    const otherMembers = household?.members?.filter(m => m.userId !== userId) || [];
+
+    if (isOwner && otherMembers.length === 0) {
+      // Sole owner — cancel Stripe subscription and delete household
+      try {
+        await StripeService.cancelSubscription(householdId);
+      } catch (_) { /* no subscription is fine */ }
+      await Household.deleteOne({ householdId });
+      await Subscription.deleteOne({ householdId });
+      // Household-scoped data
+      await PlaidTransaction.deleteMany({ householdId });
+      await FixedExpensePayment.deleteMany({ householdId });
+      await GoalContribution.deleteMany({ householdId });
+      await InsightCache.deleteMany({ householdId });
+    } else if (household) {
+      // Member (or owner with other members) — just remove from member list
+      household.members = otherMembers;
+      // Transfer ownership if this was the owner
+      if (isOwner && otherMembers.length > 0) {
+        household.members[0].role = 'owner';
+      }
+      await household.save();
+    }
+
+    // ── 3. Delete user-scoped documents ──────────────────────────────────────
+    await Promise.all([
+      Income.deleteMany({ userId }),
+      Expense.deleteMany({ userId }),
+      FixedExpense.deleteMany({ userId }),
+      Goal.deleteMany({ userId }),
+      TaskReminder.deleteMany({ assignedTo: userId }),
+      LinkedAccount.deleteMany({ userId }),
+      PasskeyChallenge.deleteMany({ userId }),
+      HouseholdInvite.deleteMany({ email: user.email }),
+    ]);
+
+    // ── 4. Delete user ────────────────────────────────────────────────────────
+    await User.deleteOne({ userId });
+
+    console.log('[AUTH] Account deleted:', { userId, householdId });
+    res.json({ message: 'Account permanently deleted' });
   } catch (error) {
     next(error);
   }

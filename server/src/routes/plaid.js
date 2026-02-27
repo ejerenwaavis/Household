@@ -23,6 +23,16 @@ router.post('/create-link-token', authMiddleware, async (req, res, next) => {
   try {
     const { userId, householdId } = req.user;
 
+    // Require passkey OR MFA before allowing bank linking
+    const user = await User.findOne({ userId });
+    const has2FA = user?.mfaEnabled || (user?.passkeys?.length > 0);
+    if (!has2FA) {
+      return res.status(403).json({
+        error: '2FA_REQUIRED',
+        message: 'A passkey or authenticator-app (2FA) is required before linking a bank account.',
+      });
+    }
+
     console.log('[Plaid Route] Creating link token for user:', { userId, householdId });
 
     const { linkToken, expiration } = await PlaidService.createLinkToken(userId, householdId);

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
+import { startRegistration } from '@simplewebauthn/browser';
 import { useAuth } from '../hooks/useAuth';
 import api from '../services/api';
 import PlaidLink from '../components/PlaidLink';
@@ -10,6 +11,7 @@ const STEPS = [
   { id: 'income',         title: 'Your Income',      emoji: '💰' },
   { id: 'fixed-expenses', title: 'Fixed Bills',      emoji: '🏠' },
   { id: 'goals',          title: 'Savings Goals',    emoji: '🎯' },
+  { id: 'passkey',        title: 'Set up Passkey',   emoji: '🔑' },
   { id: 'bank',           title: 'Link Bank',        emoji: '🏦' },
   { id: 'done',           title: "You're set!",      emoji: '🎉' },
 ];
@@ -97,6 +99,26 @@ export default function OnboardingPage() {
   ]);
 
   const [bankLinked, setBankLinked] = useState(false);
+  const [passkeyRegistered, setPasskeyRegistered] = useState(false);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
+  const [passkeyError, setPasskeyError] = useState('');
+
+  const handlePasskeyRegister = async () => {
+    setPasskeyError('');
+    setPasskeyLoading(true);
+    try {
+      const { data: options } = await api.post('/auth/passkey/register/start');
+      const credential = await startRegistration({ optionsJSON: options });
+      await api.post('/auth/passkey/register/finish', { ...credential, name: 'My Passkey' });
+      // Update user context so PlaidLink gate is immediately satisfied
+      if (updateUser) updateUser({ passkeyCount: 1 });
+      setPasskeyRegistered(true);
+    } catch (err) {
+      setPasskeyError(err.response?.data?.error || err.message || 'Registration failed. Please try again.');
+    } finally {
+      setPasskeyLoading(false);
+    }
+  };
 
   const step = STEPS[stepIndex];
   const isLast = stepIndex === STEPS.length - 1;
@@ -451,6 +473,55 @@ export default function OnboardingPage() {
               </div>
             )}
 
+            {/* ── Passkey ── */}
+            {step.id === 'passkey' && (
+              <div className="flex flex-col items-center text-center flex-1 justify-center gap-5">
+                <div className="text-5xl">🔑</div>
+                <h2 className="text-2xl font-bold text-gray-900">Secure your account</h2>
+                <p className="text-gray-500 max-w-sm text-sm">
+                  Create a <strong>passkey</strong> using Face ID, Touch ID, or Windows Hello.
+                  Passkeys replace passwords entirely — no app needed — and are required to link
+                  a bank account.
+                </p>
+
+                {passkeyRegistered ? (
+                  <div className="flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 px-5 py-3 rounded-xl font-medium">
+                    ✅ Passkey created! Your account is secured.
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-3 w-full">
+                    {passkeyError && (
+                      <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2 rounded-lg w-full max-w-sm">
+                        {passkeyError}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handlePasskeyRegister}
+                      disabled={passkeyLoading}
+                      className="w-full max-w-xs bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold py-3 px-6 rounded-xl transition flex items-center justify-center gap-2"
+                    >
+                      {passkeyLoading ? (
+                        <>
+                          <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          Waiting for device…
+                        </>
+                      ) : '🔑 Create Passkey'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={next}
+                      className="text-sm text-gray-400 hover:text-gray-600 transition"
+                    >
+                      Skip for now — I'll set this up later
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ── Bank Link ── */}
             {step.id === 'bank' && (
               <div className="flex flex-col items-center text-center flex-1 justify-center gap-5">
@@ -491,6 +562,7 @@ export default function OnboardingPage() {
                   income.amount && `✅ Income recorded`,
                   Object.values(presets).some(p => p.enabled) && `✅ Fixed bills added`,
                   goals.some(g => g.name) && `✅ Savings goals created`,
+                  passkeyRegistered && `✅ Passkey created`,
                   bankLinked && `✅ Bank account linked`,
                 ].filter(Boolean).map(item => (
                   <div key={item} className="text-sm font-medium text-indigo-700 bg-indigo-50 px-4 py-2 rounded-full">

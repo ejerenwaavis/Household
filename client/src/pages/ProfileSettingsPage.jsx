@@ -3,9 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { startRegistration } from '@simplewebauthn/browser';
 import Layout from '../components/Layout';
 import { useAuth } from '../hooks/useAuth';
-import api from '../services/api';
-
-export default function ProfileSettingsPage() {
+import api from '../services/api';export default function ProfileSettingsPage() {
   const { user, updateUser, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -51,6 +49,33 @@ export default function ProfileSettingsPage() {
   const [passkeyMsg, setPasskeyMsg] = useState('');
   const [passkeyErr, setPasskeyErr] = useState('');
   const [passkeyLoading, setPasskeyLoading] = useState(false);
+
+  // Account deletion state
+  const [deleteStep, setDeleteStep] = useState('idle'); // 'idle' | 'confirm'
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteErr, setDeleteErr] = useState('');
+
+  const handleDeleteAccount = async (e) => {
+    e.preventDefault();
+    if (deleteConfirmText !== 'DELETE') {
+      setDeleteErr('Please type DELETE exactly to confirm.');
+      return;
+    }
+    setDeleteErr('');
+    setDeleteLoading(true);
+    try {
+      await api.delete('/auth/account', { data: { password: deletePassword } });
+      // Account is gone — clear session and redirect to register
+      logout();
+      navigate('/register');
+    } catch (err) {
+      setDeleteErr(err.response?.data?.message || err.response?.data?.error || 'Failed to delete account. Please try again.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   const handleProfileSave = async (e) => {
     e.preventDefault();
@@ -545,15 +570,91 @@ export default function ProfileSettingsPage() {
         </div>
 
         {/* Danger Zone */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-red-100 dark:border-red-900/40 p-6">
-          <h2 className="text-base font-semibold text-red-600 dark:text-red-400 mb-3">Sign Out</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">This will clear your session on this device.</p>
-          <button
-            onClick={() => { logout(); navigate('/login'); }}
-            className="px-5 py-2 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 text-sm font-medium rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
-          >
-            Sign Out
-          </button>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-red-100 dark:border-red-900/40 p-6 space-y-6">
+          <h2 className="text-base font-semibold text-red-600 dark:text-red-400">Danger Zone</h2>
+
+          {/* Sign Out */}
+          <div>
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sign Out</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">This will clear your session on this device.</p>
+            <button
+              onClick={() => { logout(); navigate('/login'); }}
+              className="px-5 py-2 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 text-sm font-medium rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
+            >
+              Sign Out
+            </button>
+          </div>
+
+          <hr className="border-red-100 dark:border-red-900/40" />
+
+          {/* Delete Account */}
+          <div>
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Delete Account</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+              Permanently deletes your account, all your data, and revokes linked bank connections.
+              {user?.role === 'owner' && ' As the household owner, this will also delete the household and cancel any active subscription.'}
+              {' '}This action <strong>cannot be undone</strong>.
+            </p>
+
+            {deleteStep === 'idle' ? (
+              <button
+                type="button"
+                onClick={() => { setDeleteStep('confirm'); setDeleteErr(''); }}
+                className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                Delete My Account
+              </button>
+            ) : (
+              <form onSubmit={handleDeleteAccount} className="space-y-4 max-w-sm">
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3 text-sm text-red-700 dark:text-red-400">
+                  ⚠️ This will immediately and permanently delete all your data. There is no recovery.
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Your password</label>
+                  <input
+                    type="password"
+                    value={deletePassword}
+                    onChange={e => setDeletePassword(e.target.value)}
+                    placeholder="Enter your password"
+                    required
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Type <span className="font-mono font-bold">DELETE</span> to confirm
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteConfirmText}
+                    onChange={e => setDeleteConfirmText(e.target.value)}
+                    placeholder="DELETE"
+                    required
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-400 font-mono"
+                  />
+                </div>
+                {deleteErr && (
+                  <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{deleteErr}</div>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={deleteLoading || deleteConfirmText !== 'DELETE' || !deletePassword}
+                    className="px-5 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition-colors"
+                  >
+                    {deleteLoading ? 'Deleting…' : 'Permanently Delete Account'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setDeleteStep('idle'); setDeletePassword(''); setDeleteConfirmText(''); setDeleteErr(''); }}
+                    className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
 
       </div>

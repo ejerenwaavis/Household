@@ -4,15 +4,43 @@
  */
 
 import { useCallback, useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { usePlaidLink } from 'react-plaid-link';
 import api from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 
 const PlaidLink = ({ onSuccess, onExit }) => {
-  useAuth(); // ensures user is authenticated
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [linkToken, setLinkToken] = useState(null);
   const [error, setError] = useState(null);
+
+  // Check if the user has a passkey or MFA — required before bank linking
+  const has2FA = (user?.passkeyCount > 0) || user?.mfaEnabled;
+
+  if (!has2FA) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 space-y-2">
+        <div className="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+          <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          2FA required to link a bank account
+        </div>
+        <p className="text-xs text-amber-600 leading-relaxed">
+          To protect your financial data, you must set up a <strong>passkey</strong> (Face ID / Touch ID / Windows Hello)
+          or an <strong>authenticator app</strong> before connecting a bank account.
+        </p>
+        <Link
+          to="/settings/profile"
+          className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 underline underline-offset-2 hover:text-amber-900 transition-colors"
+        >
+          Set up security now →
+        </Link>
+      </div>
+    );
+  }
 
   /**
    * Create link token from backend
