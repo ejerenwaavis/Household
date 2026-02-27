@@ -4,9 +4,49 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Household Budget</title>
+    <style>
+      /* ── Hide ALL Google Translate UI chrome ── */
+      .goog-te-banner-frame,
+      .goog-te-balloon-frame,
+      .goog-te-ftab-float,
+      #goog-gt-tt,
+      .goog-tooltip,
+      .goog-tooltip:hover,
+      .goog-text-highlight {
+        display: none !important;
+      }
+      body {
+        top: 0 !important;
+        position: static !important;
+      }
+      /* Hide the injected iframe Google Translate adds to <body> */
+      .skiptranslate > iframe {
+        display: none !important;
+        height: 0 !important;
+      }
+    </style>
   </head>
   <body>
+    <!-- Google Translate widget mount point (hidden) -->
+    <div id="google_translate_element" style="display:none;visibility:hidden;height:0;overflow:hidden;"></div>
+
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+
+    <!-- Google Translate: initialise with English as page language, Spanish available -->
+    <script>
+      function googleTranslateElementInit() {
+        new google.translate.TranslateElement(
+          {
+            pageLanguage: 'en',
+            includedLanguages: 'es',
+            autoDisplay: false,
+            layout: google.translate.TranslateElement.InlineLayout.SIMPLE
+          },
+          'google_translate_element'
+        );
+      }
+    </script>
+    <script src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
   </body>
 </html>

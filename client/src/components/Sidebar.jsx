@@ -49,7 +49,7 @@ export default function Sidebar(){
       {/* Logo */}
       <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 mb-4">H</div>
 
-      {/* Nav â€” scrollable, fills remaining space */}
+      {/* Nav — scrollable, fills remaining space */}
       <div className="relative flex-1 w-full min-h-0">
       <nav ref={navRef} className="h-full w-full flex flex-col items-center overflow-y-auto overflow-x-hidden px-0 gap-1
         [&::-webkit-scrollbar]:w-0 [&::-webkit-scrollbar]:hidden"
@@ -140,16 +140,16 @@ export default function Sidebar(){
       )}
       </div>
 
-      {/* Bottom controls â€” always pinned to bottom */}
+      {/* Bottom controls — always pinned to bottom */}
       <div className="flex-shrink-0 w-full flex flex-col items-center gap-2 pt-3 border-t border-gray-200 dark:border-gray-700 mt-2">
 
         {/* Single language toggle: shows the OTHER language to switch to */}
         <button
           onClick={() => setLanguage(language === 'en' ? 'es' : 'en')}
           className="w-10 h-10 rounded-lg flex items-center justify-center text-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
-          title={language === 'en' ? 'Switch to EspaÃ±ol' : 'Switch to English'}
+          title={language === 'en' ? 'Switch to Español' : 'Switch to English'}
         >
-          {language === 'en' ? 'ðŸ‡ªðŸ‡¸' : 'ðŸ‡ºðŸ‡¸'}
+          {language === 'en' ? '🇪🇸' : '🇺🇸'}
         </button>
 
         {/* Settings */}

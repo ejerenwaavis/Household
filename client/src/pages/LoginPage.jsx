@@ -263,6 +263,11 @@ export default function LoginPage() {
             <p className="text-center text-gray-600 mt-4">
               Don't have an account? <Link to="/register" className="text-blue-500 hover:underline">Register</Link>
             </p>
+            <p className="text-center text-xs text-gray-400 mt-3">
+              <Link to="/terms" className="hover:underline">Terms &amp; Conditions</Link>
+              {' · '}
+              <Link to="/privacy-policy" className="hover:underline">Privacy Policy</Link>
+            </p>
           </>
         )}
       </div>

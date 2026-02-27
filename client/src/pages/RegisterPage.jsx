@@ -11,6 +11,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [loadingHousehold, setLoadingHousehold] = useState(false);
   const [error, setError] = useState('');
+  const [consentChecked, setConsentChecked] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -254,10 +255,31 @@ export default function RegisterPage() {
 
               {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded">{error}</div>}
 
+              {/* Consent checkbox */}
+              <label className="flex items-start gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={consentChecked}
+                  onChange={e => setConsentChecked(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 flex-shrink-0"
+                />
+                <span className="text-sm text-gray-600">
+                  I agree to the{' '}
+                  <Link to="/terms" target="_blank" className="text-blue-600 hover:underline font-medium">
+                    Terms &amp; Conditions
+                  </Link>{' '}
+                  and{' '}
+                  <Link to="/privacy-policy" target="_blank" className="text-blue-600 hover:underline font-medium">
+                    Privacy Policy
+                  </Link>{' '}
+                  of ACED Division LLC.
+                </span>
+              </label>
+
               <button
                 type="submit"
-                disabled={loading || loadingHousehold}
-                className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition disabled:opacity-50"
+                disabled={loading || loadingHousehold || !consentChecked}
+                className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? 'Creating...' : registrationType === 'create' ? 'Create Household' : 'Create Account & Join'}
               </button>

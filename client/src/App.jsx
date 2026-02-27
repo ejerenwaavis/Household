@@ -1,8 +1,9 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
-import { LanguageProvider } from './context/LanguageContext';
+import { LanguageProvider, triggerGoogleTranslate, useLanguage } from './context/LanguageContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { useEffect } from 'react';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -24,9 +25,30 @@ import PricingPage from './pages/PricingPage';
 import SubscriptionPage from './pages/SubscriptionPage';
 import InsightsPage from './pages/InsightsPage';
 import ProfileSettingsPage from './pages/ProfileSettingsPage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import TermsPage from './pages/TermsPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 console.log('[App] Rendering App component');
+
+// Re-fires Google Translate whenever the user navigates to a new route.
+// Must be rendered inside both <Router> and <LanguageProvider>.
+function RouteChangeTranslator() {
+  const { pathname } = useLocation();
+  const { language } = useLanguage();
+  useEffect(() => {
+    if (language === 'es') {
+      // Wait for React to finish painting the new page, then:
+      // 1. Reset GT to English so it marks new DOM nodes as untranslated
+      // 2. Re-trigger Spanish translation on the fresh content
+      setTimeout(() => {
+        triggerGoogleTranslate('');
+        setTimeout(() => triggerGoogleTranslate('es'), 300);
+      }, 200);
+    }
+  }, [pathname, language]);
+  return null;
+}
 
 function App() {
   return (
@@ -36,12 +58,15 @@ function App() {
         <LanguageProvider>
           <ThemeProvider>
             <Router>
+              <RouteChangeTranslator />
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/register/:inviteToken" element={<RegisterPage />} />
                 <Route path="/invite/:token" element={<InviteAcceptPage />} />
                 <Route path="/unauthorized" element={<UnauthorizedPage />} />
+                <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+                <Route path="/terms" element={<TermsPage />} />
                 <Route element={<ProtectedRoute />}>
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/dashboard/income" element={<IncomePage />} />
