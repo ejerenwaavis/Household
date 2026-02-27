@@ -33,7 +33,6 @@ export class PlaidService {
         language: 'en',
         // Only request transactions permission (can expand later)
         products: ['transactions'],
-        optional_products: ['recurring_transactions'],
         country_codes: ['US', 'CA', 'GB'],
         // Can also add webhook_url here if needed
       });
