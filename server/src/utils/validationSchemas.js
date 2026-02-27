@@ -75,7 +75,8 @@ export const authSchemas = {
     email,
     password: Joi.string().required().messages({
       'any.required': 'Password is required'
-    })
+    }),
+    mfaToken: Joi.string().length(6).pattern(/^\d+$/).optional()
   }).unknown(false),
 
   // Refresh token validation

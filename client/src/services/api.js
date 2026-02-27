@@ -1,23 +1,24 @@
 import axios from 'axios';
 
-// Dynamically construct API URL using the same host as the frontend
+// Detect whether we're running locally or on production (Namecheap)
+// Strategy (inspired by your SERVER detection pattern):
+//   - localhost or LAN IP  → local dev, hit backend on VITE_API_PORT (default 4000)
+//   - anything else        → production, use VITE_API_URL or relative /api (Apache proxy)
 const getAPIURL = () => {
-  // If explicitly configured in environment, use that
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
-  }
-  
-  // Production (Namecheap): Apache proxies /api → Node app internally, so use relative path
-  // Development fallback: same host + port 4000
-  if (window.location.hostname !== 'localhost' && !window.location.hostname.match(/^(10\.|192\.168\.|172\.)/)) {
-    return '/api'; // production — Apache reverse proxy handles routing
-  }
-  
-  const protocol = window.location.protocol;
   const hostname = window.location.hostname;
-  const apiPort = import.meta.env.VITE_API_PORT || 4000;
-  
-  return `${protocol}//${hostname}:${apiPort}/api`;
+  const isLocal = hostname === 'localhost'
+    || hostname === '127.0.0.1'
+    || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname);
+
+  if (isLocal) {
+    // Always auto-detect on local — ignore any VITE_API_URL override so devs
+    // don't need to touch .env files when running locally
+    const port = import.meta.env.VITE_API_PORT || 4000;
+    return `${window.location.protocol}//${hostname}:${port}/api`;
+  }
+
+  // Production: use explicit override if set, otherwise rely on Apache reverse proxy
+  return import.meta.env.VITE_API_URL || '/api';
 };
 
 const apiURL = getAPIURL();

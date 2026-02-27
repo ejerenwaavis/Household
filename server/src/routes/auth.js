@@ -435,9 +435,10 @@ router.get('/mfa/status', authMiddleware, async (req, res, next) => {
 
 // ─── Passkey / WebAuthn Routes ───────────────────────────────────────────────
 
-const RP_ID = process.env.RP_ID || 'household.aceddivision.com';
+const isDev = process.env.NODE_ENV !== 'production';
+const RP_ID = process.env.RP_ID || (isDev ? 'localhost' : 'household.aceddivision.com');
 const RP_NAME = 'Household Budget';
-const ORIGIN = process.env.FRONTEND_URL || 'https://household.aceddivision.com';
+const ORIGIN = process.env.FRONTEND_URL || (isDev ? 'http://localhost:5173' : 'https://household.aceddivision.com');
 
 /**
  * POST /auth/passkey/register/start
