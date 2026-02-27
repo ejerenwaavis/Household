@@ -1,11 +1,5 @@
-// Load .env only in development — production env vars are set via the hosting panel
-if (process.env.NODE_ENV !== 'production') {
-  try {
-    await import('dotenv/config');
-  } catch {
-    // dotenv not installed locally, continuing without it
-  }
-}
+// Env vars are loaded via --env-file-if-exists .env in the dev script.
+// In production (Namecheap), env vars come from the hosting control panel — dotenv is never used.
 
 import express from 'express';
 import cors from 'cors';

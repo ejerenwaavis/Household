@@ -2,10 +2,6 @@ import nodemailer from 'nodemailer';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { getFrontendURL } from '../utils/urlHelper.js';
-import dotenv from 'dotenv';
-
-// Ensure environment variables are loaded
-dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
