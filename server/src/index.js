@@ -58,6 +58,10 @@ import DebtPayment from './models/DebtPayment.js';
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+const ts = () => `[${new Date().toISOString()}]`;
+
+console.log(`${ts()} 🟢 Server process starting (NODE_ENV=${process.env.NODE_ENV || 'development'})`);
+
 // ============================================================
 // Stripe Webhook (MUST be before express.json() - needs raw body)
 // ============================================================
@@ -101,23 +105,23 @@ app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(specs, {
 // ============================================================
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/household')
   .then(() => {
-    console.log('✅ MongoDB connected');
+    console.log(`${ts()} ✅ MongoDB connected`);
     
     // Initialize background jobs after database connection
     try {
       initializeTransactionSyncJob();
     } catch (err) {
-      console.error('❌ Failed to initialize transaction sync job:', err.message);
+      console.error(`${ts()} ❌ Failed to initialize transaction sync job:`, err.message);
     }
 
     try {
       initializeInsightsJob();
     } catch (err) {
-      console.error('❌ Failed to initialize insights job:', err.message);
+      console.error(`${ts()} ❌ Failed to initialize insights job:`, err.message);
     }
   })
   .catch((error) => {
-    console.error('❌ MongoDB connection error:', error.message);
+    console.error(`${ts()} ❌ MongoDB connection error:`, error.message);
     process.exit(1);
   });
 
@@ -550,5 +554,5 @@ app.use((req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`${ts()} 🚀 Server running on http://localhost:${PORT}`);
 });
