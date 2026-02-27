@@ -862,6 +862,18 @@ export default function LandingPage() {
                 All systems operational
               </div>
             </div>
+
+            <div className="mt-6 pt-4 border-t border-gray-800/60 text-center">
+              <p className="text-gray-600 text-xs tracking-wide">
+                <span className="font-semibold text-gray-500">HouseholdBudget</span>{' '}
+                by{' '}
+                <span className="text-indigo-400 font-medium">ACED Devops</span>
+                {' · '}
+                <a href="https://aceddivision.com/householdbudget" className="text-gray-600 hover:text-gray-400 transition-colors">
+                  aceddivision.com/householdbudget
+                </a>
+              </p>
+            </div>
           </div>
         </footer>
 
