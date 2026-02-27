@@ -28,6 +28,7 @@ import ProfileSettingsPage from './pages/ProfileSettingsPage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import TermsPage from './pages/TermsPage';
 import OnboardingPage from './pages/OnboardingPage';
+import LandingPage from './pages/LandingPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 console.log('[App] Rendering App component');
@@ -69,6 +70,7 @@ function App() {
                 <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
                 <Route path="/terms" element={<TermsPage />} />
                 <Route path="/onboarding" element={<OnboardingPage />} />
+                <Route path="/" element={<LandingPage />} />
                 <Route element={<ProtectedRoute />}>
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/dashboard/income" element={<IncomePage />} />
@@ -87,7 +89,6 @@ function App() {
                   <Route path="/subscription" element={<SubscriptionPage />} />
                   <Route path="/insights" element={<InsightsPage />} />
                   <Route path="/settings/profile" element={<ProfileSettingsPage />} />
-                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 </Route>
               </Routes>
             </Router>
