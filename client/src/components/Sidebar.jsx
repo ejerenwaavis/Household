@@ -1,4 +1,5 @@
 ﻿import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useRef, useState, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../hooks/useAuth';
@@ -14,6 +15,19 @@ export default function Sidebar(){
   const { theme, toggleTheme } = useTheme();
   const { logout } = useAuth();
   const active = (path) => loc.pathname === path;
+
+  const navRef = useRef(null);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const check = () => setCanScrollDown(el.scrollTop + el.clientHeight < el.scrollHeight - 4);
+    check();
+    el.addEventListener('scroll', check);
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => { el.removeEventListener('scroll', check); ro.disconnect(); };
+  }, []);
 
   const navLink = (to, title, color, icon) => (
     <Link
@@ -36,7 +50,8 @@ export default function Sidebar(){
       <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 mb-4">H</div>
 
       {/* Nav â€” scrollable, fills remaining space */}
-      <nav className="flex-1 w-full flex flex-col items-center overflow-y-auto overflow-x-hidden px-0 gap-1
+      <div className="relative flex-1 w-full min-h-0">
+      <nav ref={navRef} className="h-full w-full flex flex-col items-center overflow-y-auto overflow-x-hidden px-0 gap-1
         [&::-webkit-scrollbar]:w-0 [&::-webkit-scrollbar]:hidden"
         style={{ scrollbarWidth: 'none' }}
       >
@@ -110,6 +125,20 @@ export default function Sidebar(){
         </Link>
 
       </nav>
+
+      {/* Scroll-down hint arrow */}
+      {canScrollDown && (
+        <button
+          onClick={() => navRef.current?.scrollBy({ top: 80, behavior: 'smooth' })}
+          className="absolute bottom-1 left-1/2 -translate-x-1/2 w-6 h-6 flex items-center justify-center rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 shadow text-gray-400 hover:text-indigo-500 dark:text-gray-400 dark:hover:text-indigo-400 transition-all z-10"
+          title="More items below"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      )}
+      </div>
 
       {/* Bottom controls â€” always pinned to bottom */}
       <div className="flex-shrink-0 w-full flex flex-col items-center gap-2 pt-3 border-t border-gray-200 dark:border-gray-700 mt-2">
