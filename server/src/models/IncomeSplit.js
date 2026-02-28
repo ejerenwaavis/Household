@@ -1,8 +1,8 @@
 import mongoose from 'mongoose';
 
 const incomeSplitSchema = new mongoose.Schema({
-  householdId: { type: mongoose.Schema.Types.ObjectId, ref: 'Household', required: true },
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  householdId: { type: String, required: true, index: true },
+  userId: { type: String, required: true },
   userName: String, // Denormalized for display
   splitPercentage: { type: Number, required: true, min: 0, max: 100 }, // e.g., 60 or 40
   isHeadOfHouse: { type: Boolean, default: false },

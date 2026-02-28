@@ -113,12 +113,12 @@ export default function FinanceMeetingReportPage() {
     try {
       const hid = user.householdId;
       const [incRes, varRes, fixedRes, fixPayRes, goalsRes, splitsRes, summaryRes] = await Promise.all([
-        api.get(`/income/${hid}`),
-        api.get(`/expenses/${hid}`),
-        api.get(`/fixed-expenses/${hid}`),
-        api.get(`/fixed-expense-payments/${hid}?month=${selectedMonth}`),
-        api.get(`/goals/${hid}`),
-        api.get(`/income-splits/${hid}`),
+        api.get(`/income/${hid}`).catch(() => ({ data: { incomes: [] } })),
+        api.get(`/expenses/${hid}`).catch(() => ({ data: { expenses: [] } })),
+        api.get(`/fixed-expenses/${hid}`).catch(() => ({ data: { expenses: [] } })),
+        api.get(`/fixed-expense-payments/${hid}?month=${selectedMonth}`).catch(() => ({ data: { payments: [] } })),
+        api.get(`/goals/${hid}`).catch(() => ({ data: { goals: [] } })),
+        api.get(`/income-splits/${hid}`).catch(() => ({ data: { splits: [] } })),
         api.get(`/households/${hid}/summary`).catch(() => ({ data: {} })),
       ]);
 
