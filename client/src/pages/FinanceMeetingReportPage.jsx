@@ -149,7 +149,8 @@ export default function FinanceMeetingReportPage() {
   useEffect(() => { fetchReport(); }, [fetchReport]);
 
   // ── Derived totals ─────────────────────────────────────────────────────────
-  const totalIncome = income.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  // Income: amount is stored as `weeklyTotal` on every Income document
+  const totalIncome = income.reduce((s, i) => s + (Number(i.weeklyTotal) || Number(i.amount) || 0), 0);
 
   // Fixed expenses: mark each as paid if there's a matching payment for the month
   const fixedWithStatus = fixedExpenses.map(fe => ({
@@ -189,29 +190,100 @@ export default function FinanceMeetingReportPage() {
   const parseCSV = (file) => {
     return new Promise((resolve) => {
       Papa.parse(file, {
-        header: true,
+        header: false,
         skipEmptyLines: true,
         complete: (results) => {
           const rows = results.data;
-          const transactions = rows.map(row => {
-            // Try common column names across banks
-            const date = row.Date || row.date || row['Transaction Date'] || row['Posted Date'] || '';
-            const desc = row.Description || row.description || row.Memo || row.memo || row.Name || row.name || '';
-            // Amount: some banks use separate Debit/Credit columns
-            let amount = 0;
-            let type = 'debit';
-            if (row.Amount !== undefined) {
-              const raw = String(row.Amount).replace(/[$,\s]/g, '');
-              amount = Math.abs(parseFloat(raw) || 0);
-              type = parseFloat(raw) < 0 ? 'debit' : 'credit';
-            } else if (row.Debit !== undefined || row.debit !== undefined) {
-              const debitVal = String(row.Debit || row.debit || '0').replace(/[$,\s]/g, '');
-              const creditVal = String(row.Credit || row.credit || '0').replace(/[$,\s]/g, '');
-              if (parseFloat(debitVal) > 0) { amount = parseFloat(debitVal); type = 'debit'; }
-              else { amount = parseFloat(creditVal) || 0; type = 'credit'; }
+          if (!rows || rows.length === 0) { resolve([]); return; }
+
+          const clean = (v) => String(v || '').replace(/"/g, '').trim();
+          const firstRow = rows[0].map(clean);
+          const datePattern = /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/;
+          const amountPattern = /^-?\$?\d[\d,.]*$/;
+
+          // Detect whether this is a headerless export (Wells Fargo, etc.) or has column headers
+          const firstCellIsDate   = datePattern.test(firstRow[0]);
+          const firstCellIsAmount = amountPattern.test(firstRow[0]);
+          const isHeaderless = firstCellIsDate || firstCellIsAmount;
+
+          let transactions = [];
+
+          if (isHeaderless) {
+            // --- Positional parsing: no header row (e.g. Wells Fargo) ---
+            // col[0]=Date, col[1]=Amount, col[4]=Description is the common WF layout
+            // We detect each column role intelligently from the first row.
+            let dateCol = -1, amtCol = -1, descCol = -1;
+            firstRow.forEach((cell, i) => {
+              if (dateCol < 0 && datePattern.test(cell)) { dateCol = i; return; }
+              if (amtCol < 0 && amountPattern.test(cell) && cell !== '*') { amtCol = i; return; }
+            });
+            // Description = longest non-date, non-amount, non-asterisk cell in first row
+            firstRow.forEach((cell, i) => {
+              if (i === dateCol || i === amtCol || cell === '*' || cell === '') return;
+              if (cell.length > 3 && (descCol < 0 || cell.length > firstRow[descCol].length)) descCol = i;
+            });
+            // If still unresolved, scan all rows for best description column
+            if (descCol < 0) {
+              rows.forEach(row => {
+                row.forEach((cell, i) => {
+                  const s = clean(cell);
+                  if (i === dateCol || i === amtCol) return;
+                  if (s.length > 5 && !/^\*+$/.test(s) && !/^\d/.test(s)) {
+                    if (descCol < 0 || s.length > clean((rows[0] || [])[descCol] || '').length) descCol = i;
+                  }
+                });
+              });
             }
-            return { date, description: desc, amount, type, category: guessCategory(desc), bank: file.name };
-          }).filter(t => t.amount > 0 && t.date);
+
+            transactions = rows.map(row => {
+              const cells = row.map(clean);
+              const date  = dateCol >= 0 ? cells[dateCol] : '';
+              const desc  = descCol >= 0 ? cells[descCol]
+                : cells.find(c => c.length > 5 && !/^[\d\*]/.test(c)) || '';
+              const rawAmt = amtCol >= 0 ? cells[amtCol].replace(/[$,\s]/g, '') : '0';
+              const numAmt = parseFloat(rawAmt) || 0;
+              return {
+                date,
+                description: desc,
+                amount: Math.abs(numAmt),
+                type: numAmt < 0 ? 'debit' : 'credit',
+                category: guessCategory(desc),
+                bank: file.name,
+              };
+            }).filter(t => t.amount > 0 && t.date);
+
+          } else {
+            // --- Header-based parsing (Chase, BofA, etc.) ---
+            const headers = firstRow.map(h => h.toLowerCase());
+            const colIdx = (...names) => {
+              for (const n of names) { const i = headers.indexOf(n); if (i >= 0) return i; }
+              return -1;
+            };
+            const dateCol   = colIdx('date', 'transaction date', 'posted date', 'trans date', 'trans. date');
+            const descCol   = colIdx('description', 'memo', 'name', 'details', 'payee', 'transaction description');
+            const amtCol    = colIdx('amount', 'transaction amount', 'transaction amount (usd)');
+            const debitCol  = colIdx('debit', 'debit amount', 'withdrawal', 'withdrawals');
+            const creditCol = colIdx('credit', 'credit amount', 'deposit', 'deposits');
+
+            transactions = rows.slice(1).map(row => {
+              const cells = row.map(clean);
+              const date = dateCol >= 0 ? cells[dateCol] : '';
+              const desc = descCol >= 0 ? cells[descCol] : '';
+              let amount = 0, type = 'debit';
+              if (amtCol >= 0) {
+                const raw = cells[amtCol].replace(/[$,\s]/g, '');
+                amount = Math.abs(parseFloat(raw) || 0);
+                type = parseFloat(raw) < 0 ? 'debit' : 'credit';
+              } else if (debitCol >= 0) {
+                const dv = parseFloat(cells[debitCol].replace(/[$,\s]/g, '')) || 0;
+                const cv = creditCol >= 0 ? parseFloat(cells[creditCol].replace(/[$,\s]/g, '')) || 0 : 0;
+                if (dv > 0) { amount = dv; type = 'debit'; }
+                else { amount = cv; type = 'credit'; }
+              }
+              return { date, description: desc, amount, type, category: guessCategory(desc), bank: file.name };
+            }).filter(t => t.amount > 0 && t.date);
+          }
+
           resolve(transactions);
         },
         error: () => resolve([]),
@@ -595,9 +667,9 @@ export default function FinanceMeetingReportPage() {
                     {income.map((inc, i) => (
                       <tr key={inc._id || i}>
                         <td className="py-2 text-gray-700 dark:text-gray-300 print:text-gray-800">{inc.contributorName || '—'}</td>
-                        <td className="py-2 text-gray-500 dark:text-gray-400 print:text-gray-600">{inc.source || '—'}</td>
+                        <td className="py-2 text-gray-500 dark:text-gray-400 print:text-gray-600">{inc.dailyBreakdown?.[0]?.source || inc.source || '—'}</td>
                         <td className="py-2 text-gray-400 print:text-gray-500">Wk {inc.week || '—'}</td>
-                        <td className="py-2 text-right font-semibold text-green-600">{fmt(inc.amount)}</td>
+                        <td className="py-2 text-right font-semibold text-green-600">{fmt(inc.weeklyTotal || inc.amount)}</td>
                       </tr>
                     ))}
                   </tbody>

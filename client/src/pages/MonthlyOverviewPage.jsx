@@ -40,6 +40,9 @@ export default function MonthlyOverviewPage() {
       // Add income data
       incomes.forEach(income => {
         const month = income.month;
+        // Skip invalid month values
+        if (!month || !/^\d{4}-\d{2}$/.test(month)) return;
+        if (parseInt(month.substring(0, 4)) < 2020) return;
         if (!monthMap[month]) {
           monthMap[month] = {
             month,
@@ -54,22 +57,13 @@ export default function MonthlyOverviewPage() {
         monthMap[month].totalIncome += incomeAmount;
         monthMap[month].incomeItems.push({ ...income, amount: incomeAmount });
       });
-      
-      // Add expense data
-      expenses.forEach(expense => {
-        const month = expense.month;
-        if (!monthMap[month]) {
-          monthMap[month] = {
-            month,
-            totalIncome: 0,
-            totalExpenses: 0,
-            incomeItems: [],
-            expenseItems: []
-          };
-        }
-        const expenseAmount = Number(expense.amount) || 0;
-        monthMap[month].totalExpenses += expenseAmount;
-        monthMap[month].expenseItems.push({ ...expense, amount: expenseAmount });
+
+      // Fixed expenses have no month field — add the total of all fixed expenses
+      // to every month that has income data (they are recurring monthly costs)
+      const totalFixedExpenses = expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      Object.keys(monthMap).forEach(month => {
+        monthMap[month].totalExpenses = totalFixedExpenses;
+        monthMap[month].expenseItems = expenses;
       });
       
       // Calculate remaining and weekly allowance
