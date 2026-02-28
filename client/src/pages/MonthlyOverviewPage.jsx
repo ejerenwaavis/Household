@@ -189,7 +189,7 @@ export default function MonthlyOverviewPage() {
                     onClick={() => setSelectedMonth(selectedMonth === data.month ? null : data.month)}
                   >
                     <td className="px-6 py-4 text-sm font-medium text-gray-800 dark:text-gray-200">
-                      {new Date(data.month + '-01').toLocaleDateString(undefined, { 
+                      {new Date(data.month + '-02T12:00:00').toLocaleDateString(undefined, { 
                         year: 'numeric', 
                         month: 'long' 
                       })}
@@ -228,7 +228,7 @@ export default function MonthlyOverviewPage() {
         {selectedMonth && monthlyData.find(m => m.month === selectedMonth) && (
           <div className="mt-6 bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-md border border-gray-100 dark:border-gray-700">
             <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-6">
-              {new Date(selectedMonth + '-01').toLocaleDateString(undefined, { 
+              {new Date(selectedMonth + '-02T12:00:00').toLocaleDateString(undefined, { 
                 year: 'numeric', 
                 month: 'long' 
               })} {t('- Details', '- Detalles')}
