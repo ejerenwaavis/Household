@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../context/LanguageContext';
+import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import api from '../services/api';
 import { exportMonthlyOverview } from '../services/exportService';
@@ -8,6 +9,7 @@ import { exportMonthlyOverview } from '../services/exportService';
 export default function MonthlyOverviewPage() {
   const { user } = useAuth();
   const { t } = useLanguage();
+  const navigate = useNavigate();
   const [monthlyData, setMonthlyData] = useState([]);
   const [incomeSplits, setIncomeSplits] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -125,13 +127,25 @@ export default function MonthlyOverviewPage() {
               {t('View income, expenses, and budget breakdown by month', 'Ver ingresos, gastos y presupuesto por mes')}
             </p>
           </div>
-          <button
-            onClick={() => exportMonthlyOverview(monthlyData)}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
-            title="Download as CSV"
-          >
-            {t('Export', 'Exportar')}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => navigate(`/finance-report?month=${selectedMonth || (monthlyData[0]?.month || '')}`)}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm flex items-center gap-1.5"
+              title="Open Finance Meeting Report"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              {t('Finance Meeting Report', 'Reporte de Reunión')}
+            </button>
+            <button
+              onClick={() => exportMonthlyOverview(monthlyData)}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+              title="Download as CSV"
+            >
+              {t('Export', 'Exportar')}
+            </button>
+          </div>
         </div>
 
         {/* Monthly Table */}

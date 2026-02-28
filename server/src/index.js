@@ -46,6 +46,7 @@ import subscriptionRouter from './routes/subscription.js';
 import insightsRouter from './routes/insights.js';
 import onboardingRouter from './routes/onboarding.js';
 import receiptRouter from './routes/receipt.js';
+import statementRouter from './routes/statement.js';
 import webhookRouter from './routes/webhook.js';
 
 // Import models
@@ -169,6 +170,7 @@ app.use('/api/subscription', createLimiter, subscriptionRouter);
 app.use('/api/insights', createLimiter, insightsRouter);
 app.use('/api/onboarding', createLimiter, onboardingRouter);
 app.use('/api/receipts', createLimiter, receiptRouter);
+app.use('/api/statements', createLimiter, statementRouter);
 
 // ============================================================
 // Development-only Routes (strict limiting)

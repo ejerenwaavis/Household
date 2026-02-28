@@ -29,6 +29,7 @@ import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import TermsPage from './pages/TermsPage';
 import OnboardingPage from './pages/OnboardingPage';
 import LandingPage from './pages/LandingPage';
+import FinanceMeetingReportPage from './pages/FinanceMeetingReportPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 console.log('[App] Rendering App component');
@@ -89,6 +90,7 @@ function App() {
                   <Route path="/subscription" element={<SubscriptionPage />} />
                   <Route path="/insights" element={<InsightsPage />} />
                   <Route path="/settings/profile" element={<ProfileSettingsPage />} />
+                  <Route path="/finance-report" element={<FinanceMeetingReportPage />} />
                 </Route>
               </Routes>
             </Router>
