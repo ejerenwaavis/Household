@@ -25,7 +25,7 @@ export default function MonthlyOverviewPage() {
       const [incomeRes, expensesRes, splitsRes] = await Promise.all([
         api.get(`/income/${user.householdId}`),
         api.get(`/fixed-expenses/${user.householdId}`),
-        api.get(`/income-splits/${user.householdId}`)
+        api.get(`/income-splits/${user.householdId}`).catch(() => ({ data: { splits: [] } }))
       ]);
       
       const incomes = incomeRes.data.incomes || [];
@@ -49,8 +49,10 @@ export default function MonthlyOverviewPage() {
             expenseItems: []
           };
         }
-        monthMap[month].totalIncome += income.amount;
-        monthMap[month].incomeItems.push(income);
+        // Income model stores amount as `weeklyTotal`; fall back to `amount` for older records
+        const incomeAmount = Number(income.weeklyTotal) || Number(income.amount) || 0;
+        monthMap[month].totalIncome += incomeAmount;
+        monthMap[month].incomeItems.push({ ...income, amount: incomeAmount });
       });
       
       // Add expense data
@@ -65,8 +67,9 @@ export default function MonthlyOverviewPage() {
             expenseItems: []
           };
         }
-        monthMap[month].totalExpenses += expense.amount;
-        monthMap[month].expenseItems.push(expense);
+        const expenseAmount = Number(expense.amount) || 0;
+        monthMap[month].totalExpenses += expenseAmount;
+        monthMap[month].expenseItems.push({ ...expense, amount: expenseAmount });
       });
       
       // Calculate remaining and weekly allowance
@@ -198,16 +201,16 @@ export default function MonthlyOverviewPage() {
                       })}
                     </td>
                     <td className="px-6 py-4 text-sm text-right font-semibold text-green-600 dark:text-green-400">
-                      ${data.totalIncome.toFixed(2)}
+                      ${(Number(data.totalIncome) || 0).toFixed(2)}
                     </td>
                     <td className="px-6 py-4 text-sm text-right font-semibold text-red-600 dark:text-red-400">
-                      ${data.totalExpenses.toFixed(2)}
+                      ${(Number(data.totalExpenses) || 0).toFixed(2)}
                     </td>
                     <td className="px-6 py-4 text-sm text-right font-bold text-blue-600 dark:text-blue-400">
-                      ${data.remaining.toFixed(2)}
+                      ${(Number(data.remaining) || 0).toFixed(2)}
                     </td>
                     <td className="px-6 py-4 text-sm text-right font-semibold text-purple-600 dark:text-purple-400">
-                      ${data.weeklyAllowance.toFixed(2)}
+                      ${(Number(data.weeklyAllowance) || 0).toFixed(2)}
                     </td>
                     <td className="px-6 py-4 text-center">
                       <button 
@@ -257,11 +260,11 @@ export default function MonthlyOverviewPage() {
                             <div className="flex justify-between items-center">
                               <div>
                                 <div className="text-xs text-gray-500 dark:text-gray-400">{t('Monthly', 'Mensual')}</div>
-                                <div className="text-lg font-bold text-indigo-600 dark:text-indigo-400">${split.amount.toFixed(2)}</div>
+                                <div className="text-lg font-bold text-indigo-600 dark:text-indigo-400">${(Number(split.amount) || 0).toFixed(2)}</div>
                               </div>
                               <div className="text-right">
                                 <div className="text-xs text-gray-500 dark:text-gray-400">{t('Weekly', 'Semanal')}</div>
-                                <div className="text-lg font-bold text-purple-600 dark:text-purple-400">${split.weekly.toFixed(2)}</div>
+                                <div className="text-lg font-bold text-purple-600 dark:text-purple-400">${(Number(split.weekly) || 0).toFixed(2)}</div>
                               </div>
                             </div>
                           </div>
@@ -280,7 +283,7 @@ export default function MonthlyOverviewPage() {
                         {data.incomeItems.map((income, idx) => (
                           <div key={idx} className="flex justify-between items-center bg-green-50 dark:bg-green-900 rounded-lg p-3">
                             <span className="text-gray-700 dark:text-gray-200">{income.source}</span>
-                            <span className="font-semibold text-green-600 dark:text-green-400">${income.amount.toFixed(2)}</span>
+                            <span className="font-semibold text-green-600 dark:text-green-400">${(Number(income.amount) || 0).toFixed(2)}</span>
                           </div>
                         ))}
                       </div>
@@ -297,7 +300,7 @@ export default function MonthlyOverviewPage() {
                         {data.expenseItems.map((expense, idx) => (
                           <div key={idx} className="flex justify-between items-center bg-red-50 rounded-lg p-3">
                             <span className="text-gray-700">{expense.name}</span>
-                            <span className="font-semibold text-red-600">${expense.amount.toFixed(2)}</span>
+                            <span className="font-semibold text-red-600">${(Number(expense.amount) || 0).toFixed(2)}</span>
                           </div>
                         ))}
                       </div>
