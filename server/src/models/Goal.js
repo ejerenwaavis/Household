@@ -9,6 +9,9 @@ const goalSchema = new mongoose.Schema({
   currentBalance: { type: Number, default: 0, min: 0 },
   type: { type: String, enum: ['Emergency', 'Project', 'Investment', 'Other'], default: 'Other' },
   isActive: { type: Boolean, default: true },
+  // Linked bank account (Plaid)
+  linkedAccountId: { type: String, default: null },   // LinkedAccount._id
+  linkedAccountName: { type: String, default: null },  // cached display label
   createdAt: { type: Date, default: Date.now },
 });
 

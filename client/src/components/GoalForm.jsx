@@ -7,13 +7,14 @@ const TYPES = ['Emergency', 'Project', 'Investment', 'Other'];
 const typeLabel = (t, tp) =>
   t(tp, tp === 'Emergency' ? 'Emergencia' : tp === 'Project' ? 'Proyecto' : tp === 'Investment' ? 'Inversión' : 'Otro');
 
-export default function GoalForm({ householdId, onCreated }) {
+export default function GoalForm({ householdId, linkedAccounts = [], onCreated }) {
   const { t } = useLanguage();
   const [name, setName] = useState('');
   const [type, setType] = useState('Other');
   const [monthlyContribution, setMonthlyContribution] = useState('');
   const [target, setTarget] = useState('');
   const [currentBalance, setCurrentBalance] = useState('');
+  const [linkedAccountId, setLinkedAccountId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -23,6 +24,7 @@ export default function GoalForm({ householdId, onCreated }) {
     setMonthlyContribution('');
     setTarget('');
     setCurrentBalance('');
+    setLinkedAccountId('');
     setError(null);
   };
 
@@ -40,6 +42,7 @@ export default function GoalForm({ householdId, onCreated }) {
         monthlyContribution: Number(monthlyContribution) || 0,
         target: Number(target) || 0,
         currentBalance: Number(currentBalance) || 0,
+        linkedAccountId: linkedAccountId || null,
       };
       const res = await api.post(`/goals/${householdId}`, payload);
       if (onCreated) onCreated(res.data.goal);
@@ -117,6 +120,34 @@ export default function GoalForm({ householdId, onCreated }) {
           />
         </div>
       </div>
+
+      {/* Linked bank account */}
+      {linkedAccounts.length > 0 && (
+        <div className="mt-4">
+          <label className="block text-xs text-gray-500">
+            {t('Link to Bank Account', 'Vincular a Cuenta Bancaria')}{' '}
+            <span className="text-gray-400">({t('optional', 'opcional')})</span>
+          </label>
+          <select
+            value={linkedAccountId}
+            onChange={(e) => setLinkedAccountId(e.target.value)}
+            className="mt-1 w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+          >
+            <option value="">{t('— No linked account —', '— Sin cuenta vinculada —')}</option>
+            {linkedAccounts.map((acct) => (
+              <option key={acct._id} value={acct._id}>
+                🏦 {acct.institutionName || acct.accountName}
+                {acct.accountMask ? ` ••${acct.accountMask}` : ''}
+                {acct.accountSubtype ? ` (${acct.accountSubtype})` : ''}
+                {typeof acct.currentBalance === 'number' ? ` — $${acct.currentBalance.toFixed(2)}` : ''}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-400 mt-1">
+            {t('Linking lets you sync this goal\'s balance directly from your bank.', 'Vincular te permite sincronizar el saldo directamente desde tu banco.')}
+          </p>
+        </div>
+      )}
 
       {error && <div className="text-sm text-red-500 mt-3">{error}</div>}
 

@@ -10,6 +10,7 @@ export default function GoalsPage() {
   const { user } = useAuth();
   const { t } = useLanguage();
   const [goals, setGoals] = useState([]);
+  const [linkedAccounts, setLinkedAccounts] = useState([]);
   const [totalMonthlyContribution, setTotalMonthlyContribution] = useState(0);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -19,9 +20,13 @@ export default function GoalsPage() {
     setLoading(true);
     try {
       console.log('[GoalsPage] fetching goals for householdId:', user.householdId);
-      const res = await api.get(`/goals/${user.householdId}`);
-      setGoals(res.data.goals || []);
-      setTotalMonthlyContribution(res.data.totalMonthlyContribution || 0);
+      const [goalsRes, acctRes] = await Promise.all([
+        api.get(`/goals/${user.householdId}`),
+        api.get('/plaid/linked-accounts').catch(() => ({ data: { linkedAccounts: [] } })),
+      ]);
+      setGoals(goalsRes.data.goals || []);
+      setTotalMonthlyContribution(goalsRes.data.totalMonthlyContribution || 0);
+      setLinkedAccounts(acctRes.data.linkedAccounts || []);
     } catch (err) {
       console.error('[GoalsPage] fetch error:', err);
     } finally {
@@ -47,7 +52,7 @@ export default function GoalsPage() {
         </div>
 
         {showForm && (
-          <GoalForm householdId={user?.householdId} onCreated={handleCreated} />
+          <GoalForm householdId={user?.householdId} linkedAccounts={linkedAccounts} onCreated={handleCreated} />
         )}
 
         <div className="mt-4 mb-6">
@@ -62,6 +67,7 @@ export default function GoalsPage() {
         <GoalList
           householdId={user?.householdId}
           goals={goals}
+          linkedAccounts={linkedAccounts}
           totalMonthlyContribution={totalMonthlyContribution}
           loading={loading}
           refresh={fetchGoals}

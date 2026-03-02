@@ -34,10 +34,11 @@ const typeColors = {
 const typeLabel = (t, tp) =>
   t(tp, tp === 'Emergency' ? 'Emergencia' : tp === 'Project' ? 'Proyecto' : tp === 'Investment' ? 'Inversión' : 'Otro');
 
-export default function GoalList({ householdId, goals = [], totalMonthlyContribution = 0, loading = false, refresh }) {
+export default function GoalList({ householdId, goals = [], linkedAccounts = [], totalMonthlyContribution = 0, loading = false, refresh }) {
   const { t } = useLanguage();
   const [editingGoal, setEditingGoal] = useState(null);
   const [addingFundsTo, setAddingFundsTo] = useState(null);
+  const [syncingId, setSyncingId] = useState(null);
 
   const handleDelete = async (goal) => {
     const id = goal._id || goal.id;
@@ -81,6 +82,20 @@ export default function GoalList({ householdId, goals = [], totalMonthlyContribu
     }
   };
 
+  const handleSyncBalance = async (goal) => {
+    const id = goal._id || goal.id;
+    setSyncingId(id);
+    try {
+      await api.post(`/goals/${householdId}/${id}/sync-balance`);
+      refresh && refresh();
+    } catch (err) {
+      console.error('[GoalList] sync-balance error:', err);
+      alert(err?.response?.data?.error || t('Sync failed', 'Error al sincronizar'));
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
   if (loading) {
     return <div className="text-gray-500">{t('Loading…', 'Cargando…')}</div>;
   }
@@ -102,6 +117,12 @@ export default function GoalList({ householdId, goals = [], totalMonthlyContribu
         const progress = goal.progressPercent != null
           ? goal.progressPercent
           : (goal.target > 0 ? Math.min(100, Math.round((goal.currentBalance / goal.target) * 100)) : null);
+
+        // Find the live linked account record (from Plaid-synced list)
+        const linkedAcct = goal.linkedAccountId
+          ? (goal.linkedAccount || linkedAccounts.find(a => a._id === goal.linkedAccountId))
+          : null;
+        const isSyncing = syncingId === key;
 
         return (
           <div key={key} className={`rounded-2xl p-5 border shadow-sm dark:border-gray-700 dark:bg-gray-800 ${
@@ -125,6 +146,30 @@ export default function GoalList({ householdId, goals = [], totalMonthlyContribu
                   {t('Monthly contribution', 'Aportación mensual')}:{' '}
                   <span className="font-medium text-gray-700 dark:text-gray-300">${Number(goal.monthlyContribution || 0).toFixed(2)}</span>
                 </div>
+
+                {/* Linked bank account chip */}
+                {linkedAcct && (
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    <span className="inline-flex items-center gap-1 text-xs bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700 rounded-full px-2.5 py-0.5">
+                      🏦 {linkedAcct.institutionName || linkedAcct.accountName}
+                      {linkedAcct.accountMask ? ` ••${linkedAcct.accountMask}` : ''}
+                      {linkedAcct.accountSubtype ? ` · ${linkedAcct.accountSubtype}` : ''}
+                    </span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {t('Bank balance', 'Saldo bancario')}:{' '}
+                      <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                        ${(Number(linkedAcct.currentBalance) || 0).toFixed(2)}
+                      </span>
+                    </span>
+                    <button
+                      onClick={() => handleSyncBalance(goal)}
+                      disabled={isSyncing}
+                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 disabled:opacity-50 underline underline-offset-2 transition-colors"
+                    >
+                      {isSyncing ? t('Syncing…', 'Sincronizando…') : t('Sync Balance', 'Sincronizar saldo')}
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-3 ml-4 shrink-0">
                 <button
@@ -201,6 +246,7 @@ export default function GoalList({ householdId, goals = [], totalMonthlyContribu
       {editingGoal && (
         <EditGoalModal
           goal={editingGoal}
+          linkedAccounts={linkedAccounts}
           onSave={handleSaveEdit}
           onClose={() => setEditingGoal(null)}
         />
