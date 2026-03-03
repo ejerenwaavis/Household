@@ -31,6 +31,41 @@ export function LanguageProvider({ children }) {
     triggerGoogleTranslate(language === 'es' ? 'es' : '');
   }, [language]);
 
+  // Re-translate whenever React renders new DOM content (e.g. async API data loads).
+  // Without this, fixed-timeout translation fires before data arrives so pages stay English.
+  useEffect(() => {
+    if (language !== 'es') return;
+
+    let debounceTimer = null;
+    // Flag to avoid infinite loop: GT itself mutates the DOM, which would re-trigger the observer.
+    let translating = false;
+
+    const doRetranslate = () => {
+      if (translating) return;
+      translating = true;
+      triggerGoogleTranslate('');
+      setTimeout(() => {
+        triggerGoogleTranslate('es');
+        setTimeout(() => { translating = false; }, 600);
+      }, 350);
+    };
+
+    const observer = new MutationObserver(() => {
+      if (translating) return;
+      clearTimeout(debounceTimer);
+      // Wait 900ms for mutations to settle before re-translating
+      debounceTimer = setTimeout(doRetranslate, 900);
+    });
+
+    const target = document.getElementById('root') || document.body;
+    observer.observe(target, { childList: true, subtree: true });
+
+    return () => {
+      clearTimeout(debounceTimer);
+      observer.disconnect();
+    };
+  }, [language]);
+
   const toggleLanguage = () => {
     setLanguage(prev => prev === 'en' ? 'es' : 'en');
   };

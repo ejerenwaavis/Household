@@ -99,10 +99,12 @@ export default function FinanceMeetingReportPage() {
 
   // Upload state
   const [uploadFiles, setUploadFiles] = useState([]); // [{id, name, ext, status, transactions, error}]
-  const [reviewRows, setReviewRows] = useState([]);    // all parsed transactions across files
+  const [reviewRows, setReviewRows] = useState([]);    // all parsed transactions across files (current session)
   const [uploadExpanded, setUploadExpanded] = useState(false);
   const [importing, setImporting] = useState(false);
   const [uploadPdfLoading, setUploadPdfLoading] = useState(false);
+  const [savedTxns, setSavedTxns] = useState([]);      // transactions already persisted to DB for this month
+  const [importResult, setImportResult] = useState(null); // {imported, duplicates, total} or {error}
   const fileInputRef = useRef(null);
 
   // ── Fetch report data ──────────────────────────────────────────────────────
@@ -112,7 +114,7 @@ export default function FinanceMeetingReportPage() {
     setError(null);
     try {
       const hid = user.householdId;
-      const [incRes, varRes, fixedRes, fixPayRes, goalsRes, splitsRes, summaryRes] = await Promise.all([
+      const [incRes, varRes, fixedRes, fixPayRes, goalsRes, splitsRes, summaryRes, bankTxnRes] = await Promise.all([
         api.get(`/income/${hid}`).catch(() => ({ data: { incomes: [] } })),
         api.get(`/expenses/${hid}`).catch(() => ({ data: { expenses: [] } })),
         api.get(`/fixed-expenses/${hid}`).catch(() => ({ data: { expenses: [] } })),
@@ -120,6 +122,7 @@ export default function FinanceMeetingReportPage() {
         api.get(`/goals/${hid}`).catch(() => ({ data: { goals: [] } })),
         api.get(`/income-splits/${hid}`).catch(() => ({ data: { splits: [] } })),
         api.get(`/households/${hid}/summary`).catch(() => ({ data: {} })),
+        api.get(`/bank-transactions/${hid}?month=${selectedMonth}`).catch(() => ({ data: { transactions: [] } })),
       ]);
 
       const allIncome = incRes.data.incomes || [];
@@ -138,6 +141,7 @@ export default function FinanceMeetingReportPage() {
       setGoals(allGoals);
       setSplits(allSplits);
       setSummary(summaryRes.data);
+      setSavedTxns(bankTxnRes.data.transactions || []);
     } catch (err) {
       console.error('[FinanceMeeting] fetch error:', err);
       setError('Failed to load report data. Please try again.');
@@ -172,15 +176,18 @@ export default function FinanceMeetingReportPage() {
   });
   const totalVar = varExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
-  // Imported statement transactions by category (only checked debit rows)
+  // Imported statement transactions by category (session rows + previously saved DB rows)
   const importedDebits = reviewRows.filter(r => r.included && r.type !== 'credit');
+  const savedDebits = savedTxns.filter(t => t.type !== 'credit');
+  // Union: session rows that are checked + all saved DB rows for this month (no duplicates — saved get removed from reviewRows)
+  const allStatementDebits = [...importedDebits, ...savedDebits];
   const importedByCategory = {};
-  importedDebits.forEach(r => {
+  allStatementDebits.forEach(r => {
     const cat = r.category || 'Other';
     if (!importedByCategory[cat]) importedByCategory[cat] = 0;
     importedByCategory[cat] += Number(r.amount) || 0;
   });
-  const totalImported = importedDebits.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const totalImported = allStatementDebits.reduce((s, r) => s + (Number(r.amount) || 0), 0);
 
   const totalExpenses = totalFixed + totalVar + totalImported;
   const netRemaining = totalIncome - totalExpenses;
@@ -375,6 +382,29 @@ export default function FinanceMeetingReportPage() {
 
   // ── Print ──────────────────────────────────────────────────────────────────
   const handlePrint = () => window.print();
+
+  // ── Save transactions to database ─────────────────────────────────────────
+  const handleSaveTransactions = async () => {
+    const toSave = reviewRows.filter(r => r.included);
+    if (!toSave.length) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      // Strip UI-only fields before sending to API
+      const payload = toSave.map(({ rowId, included, ...t }) => t);
+      const res = await api.post(`/bank-transactions/${user.householdId}/import`, { transactions: payload });
+      setImportResult(res.data);
+      // Remove the saved rows from the session review list — they live in DB now
+      setReviewRows(prev => prev.filter(r => !r.included));
+      // Refresh the saved-transactions list for this month
+      const fresh = await api.get(`/bank-transactions/${user.householdId}?month=${selectedMonth}`);
+      setSavedTxns(fresh.data.transactions || []);
+    } catch (err) {
+      setImportResult({ error: err?.response?.data?.error || 'Import failed. Please try again.' });
+    } finally {
+      setImporting(false);
+    }
+  };
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -591,11 +621,108 @@ export default function FinanceMeetingReportPage() {
                       </tbody>
                     </table>
                   </div>
-                  {importedDebits.length > 0 && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-right">
-                      {importedDebits.length} debit transactions · Total: <span className="font-semibold text-red-600">{fmt(totalImported)}</span> — included in report summary below
-                    </p>
+                  {/* Save-to-database action row */}
+                  <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
+                    {importedDebits.length > 0 && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {importedDebits.length} debit row{importedDebits.length !== 1 ? 's' : ''} selected · <span className="font-semibold text-red-600">{fmt(importedDebits.reduce((s,r)=>s+(Number(r.amount)||0),0))}</span>
+                      </p>
+                    )}
+                    <button
+                      onClick={handleSaveTransactions}
+                      disabled={importing || reviewRows.filter(r => r.included).length === 0}
+                      className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {importing ? (
+                        <>
+                          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                          </svg>
+                          Saving…
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                          </svg>
+                          Save {reviewRows.filter(r => r.included).length} transaction{reviewRows.filter(r => r.included).length !== 1 ? 's' : ''} to Database
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Import result banner */}
+                  {importResult && (
+                    <div className={`mt-2 px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 ${
+                      importResult.error
+                        ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
+                        : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+                    }`}>
+                      {importResult.error ? (
+                        <><span>⚠</span> {importResult.error}</>
+                      ) : (
+                        <><span>✓</span> Saved {importResult.imported} new transaction{importResult.imported !== 1 ? 's' : ''}
+                        {importResult.duplicates > 0 && <span className="text-gray-500 dark:text-gray-400"> · {importResult.duplicates} duplicate{importResult.duplicates !== 1 ? 's' : ''} skipped</span>}</>
+                      )}
+                      <button onClick={() => setImportResult(null)} className="ml-auto text-gray-400 hover:text-gray-600">×</button>
+                    </div>
                   )}
+                </div>
+              )}
+
+              {/* Previously saved transactions for this month */}
+              {savedTxns.length > 0 && (
+                <div className="px-4 pb-5 border-t border-gray-100 dark:border-gray-700 pt-4">
+                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+                    Saved for {fmtMonth(selectedMonth)}
+                    <span className="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">
+                      {savedTxns.length} transaction{savedTxns.length !== 1 ? 's' : ''} · {savedDebits.length} debit{savedDebits.length !== 1 ? 's' : ''} totalling <span className="font-semibold text-red-600">{fmt(savedDebits.reduce((s,t)=>s+(Number(t.amount)||0),0))}</span>
+                    </span>
+                  </p>
+                  <div className="overflow-x-auto rounded-lg border border-gray-100 dark:border-gray-700">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium">Date</th>
+                          <th className="px-3 py-2 text-left font-medium">Description</th>
+                          <th className="px-3 py-2 text-left font-medium">Category</th>
+                          <th className="px-3 py-2 text-right font-medium">Amount</th>
+                          <th className="px-3 py-2 text-center font-medium">Type</th>
+                          <th className="px-3 py-2 w-8" />
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+                        {savedTxns.map(txn => (
+                          <tr key={txn._id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                            <td className="px-3 py-2 text-gray-600 dark:text-gray-400 whitespace-nowrap">{txn.date}</td>
+                            <td className="px-3 py-2 text-gray-700 dark:text-gray-300 max-w-[200px] truncate">{txn.description}</td>
+                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{txn.category || 'Other'}</td>
+                            <td className={`px-3 py-2 text-right font-medium ${txn.type === 'credit' ? 'text-green-600' : 'text-red-600'}`}>
+                              {txn.type === 'credit' ? '+' : '-'}{fmt(txn.amount)}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${txn.type === 'credit' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                                {txn.type}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await api.delete(`/bank-transactions/${user.householdId}/${txn._id}`);
+                                    setSavedTxns(prev => prev.filter(t => t._id !== txn._id));
+                                  } catch { /* silent */ }
+                                }}
+                                className="text-gray-300 hover:text-red-500 transition-colors text-base leading-none"
+                                title="Remove"
+                              >×</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
