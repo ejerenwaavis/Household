@@ -122,6 +122,11 @@ export default function DebtPaymentsPage() {
   return (
     <Layout>
       <div className="max-w-6xl mx-auto">
+        {/* Deprecation notice */}
+        <div className="mb-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-amber-800 dark:text-amber-300 text-sm flex items-center gap-3">
+          <span>💳</span>
+          <span>Payments are now automatically tracked from your <a href="/credit-cards" className="underline font-semibold">Credit Cards overview</a>. Upload a bank statement there to auto-detect payments.</span>
+        </div>
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>

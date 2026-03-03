@@ -67,6 +67,11 @@ api.interceptors.response.use(
       message: error.message,
       code: error.code,
     });
+    // Notify the app that the session has expired so a modal can be shown.
+    // Use a custom event so axios (outside React) doesn't need to import context.
+    if (error.response?.status === 401) {
+      window.dispatchEvent(new CustomEvent('session:expired'));
+    }
     return Promise.reject(error);
   }
 );

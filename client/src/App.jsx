@@ -3,8 +3,9 @@ import { AuthProvider } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { LanguageProvider, triggerGoogleTranslate, useLanguage } from './context/LanguageContext';
 import { ThemeProvider } from './context/ThemeContext';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import ErrorBoundary from './components/ErrorBoundary';
+import SessionExpiredModal from './components/SessionExpiredModal';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
@@ -54,6 +55,14 @@ function RouteChangeTranslator() {
 }
 
 function App() {
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setSessionExpired(true);
+    window.addEventListener('session:expired', handler);
+    return () => window.removeEventListener('session:expired', handler);
+  }, []);
+
   return (
     <ErrorBoundary>
       <AuthProvider>
@@ -62,6 +71,7 @@ function App() {
           <ThemeProvider>
             <Router>
               <RouteChangeTranslator />
+              <SessionExpiredModal open={sessionExpired} onClose={() => setSessionExpired(false)} />
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />

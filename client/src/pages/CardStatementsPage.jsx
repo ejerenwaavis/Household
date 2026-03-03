@@ -122,6 +122,11 @@ export default function CardStatementsPage() {
   return (
     <Layout>
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Deprecation notice */}
+        <div className="mb-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-amber-800 dark:text-amber-300 text-sm flex items-center gap-3">
+          <span>📄</span>
+          <span>Statements are now auto-generated when you upload CC transactions. Click any card on the <a href="/credit-cards" className="underline font-semibold">Credit Cards</a> page to upload and view statements.</span>
+        </div>
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>

@@ -29,8 +29,6 @@ export default function MobileSidebar({ isOpen, onClose }) {
     { path: '/expenses', label: 'Expenses', icon: '🛒', color: 'orange' },
     { path: '/goals', label: 'Goals', icon: '🎯', color: 'teal' },
     { path: '/credit-cards', label: 'Credit Cards', icon: '💳', color: 'pink' },
-    { path: '/card-statements', label: 'Statements', icon: '📄', color: 'pink' },
-    { path: '/debt-payments', label: 'Debt Payments', icon: '💳', color: 'pink' },
     { path: '/monthly-overview', label: 'Overview', icon: '📈', color: 'blue' },
     { path: '/finance-report', label: 'Finance Meeting', icon: '📑', color: 'indigo' },
     { path: '/members', label: 'Members', icon: '👥', color: 'purple' },

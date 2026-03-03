@@ -48,6 +48,7 @@ import onboardingRouter from './routes/onboarding.js';
 import receiptRouter from './routes/receipt.js';
 import statementRouter from './routes/statement.js';
 import bankTransactionRouter from './routes/bankTransaction.js';
+import paymentSuggestionRouter from './routes/paymentSuggestion.js';
 import webhookRouter from './routes/webhook.js';
 
 // Import models
@@ -173,6 +174,7 @@ app.use('/api/onboarding', createLimiter, onboardingRouter);
 app.use('/api/receipts', createLimiter, receiptRouter);
 app.use('/api/statements', createLimiter, statementRouter);
 app.use('/api/bank-transactions', createLimiter, bankTransactionRouter);
+app.use('/api/payment-suggestions', createLimiter, paymentSuggestionRouter);
 
 // ============================================================
 // Development-only Routes (strict limiting)

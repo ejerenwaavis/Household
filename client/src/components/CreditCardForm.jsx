@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import api from '../services/api';
 
-export default function CreditCardForm({ householdId, onSuccess }) {
+export default function CreditCardForm({ householdId, onSuccess, knownBanks = [] }) {
   const { t } = useLanguage();
   const [form, setForm] = useState({
     cardName: '',
@@ -13,7 +13,8 @@ export default function CreditCardForm({ householdId, onSuccess }) {
     plannedExtraPayment: '',
     interestRate: '',
     creditLimit: '',
-    dueDay: ''
+    dueDay: '',
+    linkedBankName: ''
   });
   const [loading, setLoading] = useState(false);
 
@@ -47,7 +48,8 @@ export default function CreditCardForm({ householdId, onSuccess }) {
         plannedExtraPayment: '',
         interestRate: '',
         creditLimit: '',
-        dueDay: ''
+        dueDay: '',
+        linkedBankName: ''
       });
       
       onSuccess && onSuccess();
@@ -202,6 +204,33 @@ export default function CreditCardForm({ householdId, onSuccess }) {
             placeholder="15"
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            {t('Linked Bank Account', 'Cuenta Bancaria Vinculada')}
+          </label>
+          {knownBanks.length > 0 ? (
+            <select
+              name="linkedBankName"
+              value={form.linkedBankName}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white"
+            >
+              <option value="">{t('None / not set', 'Ninguna')}</option>
+              {knownBanks.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+          ) : (
+            <input
+              type="text"
+              name="linkedBankName"
+              value={form.linkedBankName}
+              onChange={handleChange}
+              placeholder={t('e.g. Chase Checking', 'ej. Chase Checking')}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+            />
+          )}
+          <p className="text-xs text-gray-400 mt-1">{t('Used to auto-detect payments from uploaded bank statements', 'Usado para detectar pagos automáticamente')}</p>
         </div>
 
         <div className="md:col-span-2">

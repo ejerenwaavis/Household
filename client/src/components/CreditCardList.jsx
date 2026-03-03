@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import EditCreditCardModal from './EditCreditCardModal';
+import CreditCardDetailModal from './CreditCardDetailModal';
 import api from '../services/api';
 
 export default function CreditCardList({ cards, loading, onUpdate, householdId }) {
   const { t } = useLanguage();
   const [editingCard, setEditingCard] = useState(null);
+  const [detailCard, setDetailCard] = useState(null);
 
   const handleDelete = async (card) => {
     if (!window.confirm(t(`Delete "${card.cardName}"?`, `¿Eliminar "${card.cardName}"?`))) {
@@ -68,7 +70,8 @@ export default function CreditCardList({ cards, loading, onUpdate, householdId }
           return (
             <div
               key={card._id}
-              className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-md border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-shadow"
+              className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-md border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-shadow cursor-pointer"
+              onClick={() => setDetailCard(card)}
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
@@ -101,13 +104,13 @@ export default function CreditCardList({ cards, loading, onUpdate, householdId }
 
                 <div className="flex gap-2 ml-4">
                   <button
-                    onClick={() => setEditingCard(card)}
+                    onClick={(e) => { e.stopPropagation(); setEditingCard(card); }}
                     className="px-3 py-1 text-sm text-indigo-600 hover:text-indigo-800"
                   >
                     {t('Edit', 'Editar')}
                   </button>
                   <button
-                    onClick={() => handleDelete(card)}
+                    onClick={(e) => { e.stopPropagation(); handleDelete(card); }}
                     className="px-3 py-1 text-sm text-red-600 hover:text-red-800"
                   >
                     {t('Delete', 'Eliminar')}
@@ -151,7 +154,13 @@ export default function CreditCardList({ cards, loading, onUpdate, householdId }
                     <span className="font-medium">{t('Due Day', 'Día de Vencimiento')}:</span> {card.dueDay}
                   </div>
                 )}
+                {card.linkedBankName && (
+                  <div>
+                    <span className="font-medium">{t('Linked Bank', 'Banco Vinculado')}:</span> {card.linkedBankName}
+                  </div>
+                )}
               </div>
+              <p className="text-xs text-indigo-400 dark:text-indigo-500 mt-3">{t('Click card to view transactions & payments →', 'Clic para ver transacciones y pagos →')}</p>
             </div>
           );
         })}
@@ -162,6 +171,15 @@ export default function CreditCardList({ cards, loading, onUpdate, householdId }
           card={editingCard}
           onSave={handleSaveEdit}
           onClose={() => setEditingCard(null)}
+        />
+      )}
+
+      {detailCard && (
+        <CreditCardDetailModal
+          card={detailCard}
+          householdId={householdId}
+          onClose={() => setDetailCard(null)}
+          onCardUpdated={onUpdate}
         />
       )}
     </>

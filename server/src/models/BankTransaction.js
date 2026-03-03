@@ -23,6 +23,10 @@ const bankTransactionSchema = new mongoose.Schema({
   hash: { type: String, required: true },
 
   source:     { type: String, enum: ['csv', 'pdf', 'manual'], default: 'csv' },
+  // Whether this row came from a bank account or a credit card statement upload
+  sourceType: { type: String, enum: ['bank', 'credit_card'], default: 'bank' },
+  // Populated when sourceType === 'credit_card' — links to CreditCard._id
+  creditCardId: { type: String, default: null },
   importedBy: { type: String },
   importedAt: { type: Date, default: Date.now },
 });

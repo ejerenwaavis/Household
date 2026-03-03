@@ -12,7 +12,8 @@ export default function EditCreditCardModal({ card, onSave, onClose }) {
     plannedExtraPayment: card.plannedExtraPayment || 0,
     interestRate: card.interestRate || 0,
     creditLimit: card.creditLimit || 0,
-    dueDay: card.dueDay || ''
+    dueDay: card.dueDay || '',
+    linkedBankName: card.linkedBankName || ''
   });
 
   const handleChange = (e) => {
@@ -187,7 +188,6 @@ export default function EditCreditCardModal({ card, onSave, onClose }) {
             />
           </div>
 
-          {/* Due Day */}
           <div>
             <label className="block text-sm font-medium text-gray-900 dark:text-white mb-1">
               {t('Payment Due Day', 'Día de Vencimiento')}
@@ -202,6 +202,22 @@ export default function EditCreditCardModal({ card, onSave, onClose }) {
               placeholder={t('1-31', '1-31')}
               className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             />
+          </div>
+
+          {/* Linked Bank Account */}
+          <div>
+            <label className="block text-sm font-medium text-gray-900 dark:text-white mb-1">
+              {t('Linked Bank Account', 'Cuenta Bancaria Vinculada')}
+            </label>
+            <input
+              type="text"
+              name="linkedBankName"
+              value={formData.linkedBankName}
+              onChange={handleChange}
+              placeholder={t('e.g. Chase Checking', 'ej. Chase Checking')}
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            />
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{t('Used to auto-detect payments from uploaded bank statements', 'Usado para detectar pagos automáticamente')}</p>
           </div>
 
           {/* Action Buttons */}

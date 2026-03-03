@@ -14,15 +14,24 @@ export default function CreditCardsPage() {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [knownBanks, setKnownBanks] = useState([]);
 
   const fetchCards = useCallback(async () => {
     if (!user?.householdId) return;
     
     try {
       setLoading(true);
-      const response = await api.get(`/credit-cards/${user.householdId}`);
-      setCards(response.data.cards || []);
-      setSummary(response.data.summary || {});
+      const [cardsRes, bankTxnRes] = await Promise.all([
+        api.get(`/credit-cards/${user.householdId}`),
+        api.get(`/bank-transactions/${user.householdId}?limit=500`).catch(() => ({ data: { transactions: [] } })),
+      ]);
+      setCards(cardsRes.data.cards || []);
+      setSummary(cardsRes.data.summary || {});
+      // Derive distinct bank names from saved transactions for the linked-bank dropdown
+      const banks = [...new Set(
+        (bankTxnRes.data.transactions || []).map(t => t.bank).filter(Boolean)
+      )].sort();
+      setKnownBanks(banks);
     } catch (error) {
       console.error('[CreditCards] Error fetching:', error);
     } finally {
@@ -97,6 +106,7 @@ export default function CreditCardsPage() {
             <CreditCardForm 
               householdId={user?.householdId} 
               onSuccess={handleCardAdded}
+              knownBanks={knownBanks}
             />
           </div>
         )}

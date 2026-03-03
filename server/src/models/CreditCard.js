@@ -12,6 +12,7 @@ const creditCardSchema = new mongoose.Schema({
   creditLimit: { type: Number, default: 0 }, // Card limit
   lastStatementDate: Date,
   dueDay: Number, // Day of month payment is due
+  linkedBankName: { type: String, default: '' }, // Bank account that pays this card (used for payment auto-detection)
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }

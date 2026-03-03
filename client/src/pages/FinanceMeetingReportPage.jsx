@@ -8,6 +8,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import Papa from 'papaparse';
 import { useAuth } from '../hooks/useAuth';
 import Layout from '../components/Layout';
+import PaymentSuggestionsWidget from '../components/PaymentSuggestionsWidget';
 import api from '../services/api';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -668,6 +669,10 @@ export default function FinanceMeetingReportPage() {
                       <button onClick={() => setImportResult(null)} className="ml-auto text-gray-400 hover:text-gray-600">×</button>
                     </div>
                   )}
+                  <PaymentSuggestionsWidget
+                    householdId={user?.householdId}
+                    onConfirmed={fetchReport}
+                  />
                 </div>
               )}
 
