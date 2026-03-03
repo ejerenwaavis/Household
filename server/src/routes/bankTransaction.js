@@ -8,7 +8,6 @@ import PaymentSuggestion from '../models/PaymentSuggestion.js';
 
 const router = Router({ mergeParams: true });
 
-// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Normalise a raw date string (MM/DD/YYYY, M/D/YYYY, YYYY-MM-DD) to "YYYY-MM-DD".
