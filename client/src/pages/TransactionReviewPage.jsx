@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { AlertCircle, RefreshCw, CheckCircle, Circle, Filter, ChevronLeft, ChevronRight, Tag, FileText } from 'lucide-react';
+import { AlertCircle, RefreshCw, CheckCircle, Circle, Filter, ChevronLeft, ChevronRight, Tag, FileText, Copy } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useAuth } from '../hooks/useAuth';
@@ -30,6 +30,11 @@ const TransactionReviewPage = () => {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const [filterReconciled, setFilterReconciled] = useState('all'); // 'all', 'yes', 'no'
+  const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
+
+  // Duplicate state
+  const [duplicateCount, setDuplicateCount] = useState(0);
+  const [resolvingIds, setResolvingIds] = useState(new Set());
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(0);
@@ -48,6 +53,13 @@ const TransactionReviewPage = () => {
       .catch(() => {});
   }, [authToken]);
 
+  // ── Fetch duplicate count on mount ────────────────────────
+  useEffect(() => {
+    TransactionService.getDuplicates()
+      .then(r => setDuplicateCount(r.count || 0))
+      .catch(() => {});
+  }, [authToken]);
+
   // ── Fetch transactions when filters/page change ───────────
   const fetchTransactions = useCallback(async () => {
     try {
@@ -61,6 +73,7 @@ const TransactionReviewPage = () => {
       if (selectedAccount) params.accountId = selectedAccount;
       if (filterReconciled === 'yes') params.isReconciled = true;
       if (filterReconciled === 'no') params.isReconciled = false;
+      if (showDuplicatesOnly) params.isDuplicate = true;
 
       const data = await TransactionService.getTransactions(params, authToken);
       setTransactions(data.transactions || []);
@@ -70,7 +83,7 @@ const TransactionReviewPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [authToken, selectedAccount, selectedMonth, filterReconciled, currentPage]);
+  }, [authToken, selectedAccount, selectedMonth, filterReconciled, showDuplicatesOnly, currentPage]);
 
   // ── Fetch category summary ─────────────────────────────────
   const fetchSummary = useCallback(async () => {
@@ -95,7 +108,30 @@ const TransactionReviewPage = () => {
   // Reset to page 0 when filters change
   useEffect(() => {
     setCurrentPage(0);
-  }, [selectedAccount, selectedMonth, filterReconciled]);
+  }, [selectedAccount, selectedMonth, filterReconciled, showDuplicatesOnly]);
+
+  // ── Resolve duplicate ──────────────────────────────────────
+  const handleResolveDuplicate = async (txn, action) => {
+    try {
+      setResolvingIds(s => new Set(s).add(txn._id));
+      await TransactionService.resolveDuplicate(txn._id, action);
+      if (action === 'dismiss') {
+        // Remove from list immediately
+        setTransactions(txns => txns.filter(t => t._id !== txn._id));
+        setTotalCount(c => c - 1);
+      } else {
+        // Unmark in list
+        setTransactions(txns =>
+          txns.map(t => t._id === txn._id ? { ...t, isDuplicate: false } : t)
+        );
+      }
+      setDuplicateCount(c => Math.max(0, c - 1));
+    } catch {
+      setError('Failed to resolve duplicate');
+    } finally {
+      setResolvingIds(ids => { const s = new Set(ids); s.delete(txn._id); return s; });
+    }
+  };
 
   // ── Update category ────────────────────────────────────────
   const handleCategoryChange = async (transactionId, newCategory) => {
@@ -171,6 +207,32 @@ const TransactionReviewPage = () => {
           </div>
         )}
 
+        {/* ── Duplicate alert banner ───────────────────────── */}
+        {duplicateCount > 0 && (
+          <div className={`mb-4 p-4 rounded-lg border flex items-center justify-between gap-3 flex-wrap ${
+            showDuplicatesOnly
+              ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-400 dark:border-amber-700'
+              : 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-800'
+          }`}>
+            <div className="flex items-center gap-3">
+              <Copy size={18} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
+              <p className="text-sm text-amber-800 dark:text-amber-300 font-medium">
+                {duplicateCount} possible duplicate transaction{duplicateCount !== 1 ? 's' : ''} detected
+              </p>
+            </div>
+            <button
+              onClick={() => setShowDuplicatesOnly(v => !v)}
+              className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                showDuplicatesOnly
+                  ? 'bg-amber-600 text-white hover:bg-amber-700'
+                  : 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/60'
+              }`}
+            >
+              {showDuplicatesOnly ? 'Show all transactions' : 'Review duplicates →'}
+            </button>
+          </div>
+        )}
+
         {/* ── No accounts CTA ─────────────────────────────────── */}
         {linkedAccounts.length === 0 && !loading && (
           <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-8 text-center mb-6">
@@ -218,6 +280,21 @@ const TransactionReviewPage = () => {
               <option value="no">Unreconciled</option>
               <option value="yes">Reconciled</option>
             </select>
+
+            {/* Duplicates toggle */}
+            {duplicateCount > 0 && (
+              <button
+                onClick={() => setShowDuplicatesOnly(v => !v)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${
+                  showDuplicatesOnly
+                    ? 'bg-amber-500 text-white'
+                    : 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50'
+                }`}
+              >
+                <Copy size={13} />
+                Duplicates ({duplicateCount})
+              </button>
+            )}
 
             <span className="ml-auto text-sm text-gray-500 dark:text-gray-400">
               {totalCount} transaction{totalCount !== 1 ? 's' : ''}
@@ -273,7 +350,7 @@ const TransactionReviewPage = () => {
               </div>
 
               {transactions.map(txn => {
-                const isUpdating = updatingIds.has(txn._id);
+                const isUpdating = updatingIds.has(txn._id) || resolvingIds.has(txn._id);
                 const isEditing = editingCategory === txn._id;
                 const amount = txn.amount || 0;
                 const isDebit = amount > 0;
@@ -283,7 +360,11 @@ const TransactionReviewPage = () => {
                   <div
                     key={txn._id}
                     className={`grid grid-cols-12 gap-2 px-4 py-3 items-center border-b border-gray-100 dark:border-gray-700 last:border-0 transition-colors ${
-                      txn.isReconciled ? 'bg-green-50/30 dark:bg-green-900/10' : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'
+                      txn.isDuplicate
+                        ? 'bg-amber-50/60 dark:bg-amber-900/10'
+                        : txn.isReconciled
+                          ? 'bg-green-50/30 dark:bg-green-900/10'
+                          : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'
                     } ${isUpdating ? 'opacity-60' : ''}`}
                   >
                     {/* Reconcile checkbox */}
@@ -313,11 +394,38 @@ const TransactionReviewPage = () => {
 
                     {/* Merchant / Description */}
                     <div className="col-span-4 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                        {txn.merchant || txn.name}
-                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                          {txn.merchant || txn.name}
+                        </p>
+                        {txn.isDuplicate && (
+                          <span className="flex-shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded-full">
+                            <Copy size={10} />
+                            Duplicate
+                          </span>
+                        )}
+                      </div>
                       {txn.merchant && txn.name !== txn.merchant && (
                         <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{txn.name}</p>
+                      )}
+                      {/* Duplicate resolution buttons */}
+                      {txn.isDuplicate && (
+                        <div className="flex items-center gap-2 mt-1">
+                          <button
+                            onClick={() => handleResolveDuplicate(txn, 'keep')}
+                            disabled={resolvingIds.has(txn._id)}
+                            className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-40 transition-colors"
+                          >
+                            Keep Both
+                          </button>
+                          <button
+                            onClick={() => handleResolveDuplicate(txn, 'dismiss')}
+                            disabled={resolvingIds.has(txn._id)}
+                            className="text-xs px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 disabled:opacity-40 transition-colors"
+                          >
+                            Remove Duplicate
+                          </button>
+                        </div>
                       )}
                     </div>
 

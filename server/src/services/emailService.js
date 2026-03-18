@@ -400,3 +400,100 @@ If you didn't create this account, you can safely ignore this email.
     return false;
   }
 }
+
+/**
+ * Send a budget alert email to all household members.
+ * @param {string[]} emails
+ * @param {{ householdName, category, spent, budget, percent, status }} data
+ */
+export async function sendBudgetAlertEmail(emails, { householdName, category, spent, budget, percent, status }) {
+  if (!transporter) {
+    console.warn('[email service] Not configured — skipping budget alert');
+    return false;
+  }
+
+  const isExceeded = status === 'exceeded';
+  const color      = isExceeded ? '#ef4444' : '#f59e0b';
+  const label      = isExceeded ? 'BUDGET EXCEEDED' : 'BUDGET WARNING';
+  const subject    = isExceeded
+    ? `\u26a0\ufe0f Budget Exceeded: ${category} — ${householdName}`
+    : `\u26a0\ufe0f Budget Warning: ${category} at ${percent}% — ${householdName}`;
+
+  const frontendUrl = process.env.FRONTEND_URL || 'https://household.aceddivision.com';
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#f8fafc; margin:0; padding:0; }
+    .container { max-width:560px; margin:40px auto; background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+    .header { background:${color}; padding:28px 32px; }
+    .header h1 { color:#fff; margin:0; font-size:20px; font-weight:700; }
+    .body { padding:32px; }
+    .stat-row { display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid #f1f5f9; }
+    .stat-label { color:#64748b; font-size:14px; }
+    .stat-value { font-weight:600; font-size:16px; color:#0f172a; }
+    .bar-bg { background:#f1f5f9; border-radius:8px; height:12px; margin:18px 0; overflow:hidden; }
+    .bar-fill { height:100%; border-radius:8px; background:${color}; width:${Math.min(percent, 100)}%; transition:width .4s; }
+    .percent { text-align:center; font-size:28px; font-weight:800; color:${color}; margin:8px 0 4px; }
+    .cta { display:block; text-align:center; margin:24px 0 0; background:#6366f1; color:#fff; padding:13px 24px; border-radius:8px; text-decoration:none; font-weight:600; font-size:15px; }
+    .footer { text-align:center; padding:18px 32px; color:#94a3b8; font-size:12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>${label}: ${category}</h1>
+    </div>
+    <div class="body">
+      <p style="color:#475569;margin:0 0 20px;">
+        ${isExceeded
+          ? `Your <strong>${householdName}</strong> household has <strong>exceeded</strong> the budget for <strong>${category}</strong> this month.`
+          : `Your <strong>${householdName}</strong> household is approaching the budget limit for <strong>${category}</strong> this month.`
+        }
+      </p>
+      <div class="percent">${percent}%</div>
+      <div class="bar-bg"><div class="bar-fill"></div></div>
+      <div class="stat-row">
+        <span class="stat-label">Spent this month</span>
+        <span class="stat-value" style="color:${color};">$${spent.toFixed(2)}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Monthly budget</span>
+        <span class="stat-value">$${budget.toFixed(2)}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Remaining</span>
+        <span class="stat-value" style="color:${spent > budget ? '#ef4444' : '#22c55e'};">
+          ${spent > budget ? '-' : ''}$${Math.abs(budget - spent).toFixed(2)}
+        </span>
+      </div>
+      <a href="${frontendUrl}/expenses" class="cta">View Expenses &rarr;</a>
+    </div>
+    <div class="footer">Household &bull; Budget Alert &bull; ${new Date().toLocaleDateString()}</div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `${label} — ${category}\n\nSpent: $${spent.toFixed(2)} / Budget: $${budget.toFixed(2)} (${percent}%)\n\nView expenses: ${frontendUrl}/expenses`;
+
+  try {
+    for (const email of emails) {
+      await transporter.sendMail({
+        from: process.env.EMAIL_FROM || 'noreply@household.local',
+        to: email,
+        subject,
+        text,
+        html,
+      });
+    }
+    console.log('[email service] Budget alert sent to', emails.length, 'recipient(s):', category, percent + '%');
+    return true;
+  } catch (err) {
+    console.error('[email service] Failed to send budget alert:', err.message);
+    return false;
+  }
+}

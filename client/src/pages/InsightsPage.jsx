@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import api from '../services/api';
+import SkeletonBlock from '../components/SkeletonBlock';
 
 const RECOMMENDATION_STYLES = {
   warning: 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-300',
@@ -107,8 +108,55 @@ export default function InsightsPage() {
   if (loading) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-64">
-          <div className="w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
+        <div className="max-w-5xl mx-auto px-4 py-8">
+          {/* Header skeleton */}
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex flex-col gap-2">
+              <SkeletonBlock className="h-8 w-48 rounded-lg" />
+              <SkeletonBlock className="h-4 w-56 rounded" />
+            </div>
+            <div className="flex gap-2">
+              <SkeletonBlock className="h-9 w-20 rounded-lg" />
+              <SkeletonBlock className="h-9 w-24 rounded-lg" />
+            </div>
+          </div>
+          {/* 4-cell metrics grid */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col gap-3">
+                <SkeletonBlock className="h-3 w-24 rounded" />
+                <SkeletonBlock className="h-8 w-28 rounded-md" />
+                <SkeletonBlock className="h-3 w-20 rounded" />
+              </div>
+            ))}
+          </div>
+          {/* 2-column content panels */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            {[...Array(2)].map((_, i) => (
+              <div key={i} className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col gap-4">
+                <SkeletonBlock className="h-4 w-36 rounded" />
+                {[...Array(4)].map((_, j) => (
+                  <div key={j} className="flex items-center gap-3">
+                    <SkeletonBlock className="flex-1 h-3 rounded" />
+                    <SkeletonBlock className="h-3 w-12 rounded" />
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          {/* Recommendation list skeleton */}
+          <div className="flex flex-col gap-3">
+            <SkeletonBlock className="h-5 w-40 rounded mb-1" />
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 flex items-start gap-3">
+                <SkeletonBlock className="h-5 w-5 rounded flex-shrink-0 mt-0.5" />
+                <div className="flex flex-col gap-2 flex-1">
+                  <SkeletonBlock className="h-4 w-3/4 rounded" />
+                  <SkeletonBlock className="h-3 w-full rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </Layout>
     );

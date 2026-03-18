@@ -14,7 +14,7 @@ export function AuthProvider({ children }) {
     const savedUser = localStorage.getItem('user');
     const savedInvites = localStorage.getItem('pendingInvites');
     console.log('[AuthContext] Loading from localStorage:', { hasUser: !!savedUser, hasToken: !!savedToken });
-    if (savedToken && savedUser) {
+    if (savedToken && savedUser && savedUser !== 'undefined' && savedUser !== 'null') {
       const parsed = JSON.parse(savedUser);
       console.log('[AuthContext] Parsed user:', { userId: parsed.userId, householdId: parsed.householdId, householdName: parsed.householdName });
       setToken(savedToken);

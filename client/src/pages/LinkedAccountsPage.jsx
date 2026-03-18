@@ -10,6 +10,7 @@ import PlaidLink from '../components/PlaidLink';
 import * as PlaidService from '../services/plaidService';
 import api from '../services/api';
 import { useAuth } from '../hooks/useAuth';
+import SkeletonBlock from '../components/SkeletonBlock';
 
 const LinkedAccountsPage = () => {
   const { token: authToken } = useAuth();
@@ -214,13 +215,21 @@ const LinkedAccountsPage = () => {
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Your Linked Accounts</h2>
           
           {loading ? (
-            <div className="text-center py-12">
-              <div className="inline-block">
-                <svg className="w-12 h-12 animate-spin text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              </div>
-              <p className="text-gray-600 dark:text-gray-400 mt-4">Loading accounts...</p>
+            <div className="animate-pulse space-y-4">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 flex items-center gap-4">
+                  <SkeletonBlock className="h-12 w-12 rounded-full flex-shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <SkeletonBlock className="h-5 w-48 rounded" />
+                    <SkeletonBlock className="h-3 w-32 rounded" />
+                    <SkeletonBlock className="h-3 w-24 rounded" />
+                  </div>
+                  <div className="flex gap-2">
+                    <SkeletonBlock className="h-8 w-20 rounded-lg" />
+                    <SkeletonBlock className="h-8 w-16 rounded-lg" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : linkedAccounts.length === 0 ? (
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-12 text-center">

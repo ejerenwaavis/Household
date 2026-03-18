@@ -63,7 +63,7 @@ import CardStatement from './models/CardStatement.js';
 import DebtPayment from './models/DebtPayment.js';
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 4000;
 
 const ts = () => `[${new Date().toISOString()}]`;
 
@@ -567,4 +567,7 @@ app.use((req, res) => {
 
 app.listen(PORT, () => {
   console.log(`${ts()} 🚀 Server running on http://localhost:${PORT}`);
+}).on('error', (err) => {
+  console.error(`${ts()} ❌ Server listen error: ${err.message}`);
+  process.exit(1);
 });

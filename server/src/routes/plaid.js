@@ -11,6 +11,7 @@ import PlaidTransaction from '../models/PlaidTransaction.js';
 import User from '../models/User.js';
 import { handlePlaidWebhook } from '../webhooks/plaidWebhook.js';
 import { syncAllTransactions, syncAccountTransactions } from '../services/transactionSyncService.js';
+import { resolveDuplicate, detectAndMarkDuplicates } from '../services/duplicateDetectionService.js';
 
 const router = Router();
 
@@ -325,7 +326,7 @@ router.post('/set-default/:accountId', authMiddleware, async (req, res, next) =>
 router.get('/transactions', authMiddleware, async (req, res, next) => {
   try {
     const { householdId } = req.user;
-    const { accountId, month, limit = 50, offset = 0 } = req.query;
+    const { accountId, month, limit = 50, offset = 0, isReconciled, isDuplicate } = req.query;
 
     console.log('[Plaid Route] Fetching transactions', { householdId, accountId, month, limit, offset });
 
@@ -340,6 +341,12 @@ router.get('/transactions', authMiddleware, async (req, res, next) => {
       const startDate = new Date(year, monthNum - 1, 1);
       const endDate = new Date(year, monthNum, 0, 23, 59, 59);
       filter.date = { $gte: startDate, $lte: endDate };
+    }
+    if (isReconciled !== undefined) {
+      filter.isReconciled = isReconciled === 'true';
+    }
+    if (isDuplicate !== undefined) {
+      filter.isDuplicate = isDuplicate === 'true';
     }
 
     // Get total count
@@ -536,6 +543,66 @@ router.post('/update-all-webhooks', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('[Plaid] Error updating all webhooks:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /plaid/duplicates
+ * Returns all transactions flagged as duplicates for the household,
+ * along with the original transaction they were matched against.
+ */
+router.get('/duplicates', authMiddleware, async (req, res) => {
+  try {
+    const { householdId } = req.user;
+
+    const duplicates = await PlaidTransaction.find({ householdId, isDuplicate: true })
+      .sort({ date: -1 })
+      .lean();
+
+    // Attach original transaction data so the UI can show what it matched against
+    const originalIds = duplicates
+      .map(d => d.originalTransactionId)
+      .filter(Boolean);
+
+    const originals = await PlaidTransaction.find({ _id: { $in: originalIds } }).lean();
+    const originalsMap = Object.fromEntries(originals.map(o => [String(o._id), o]));
+
+    const enriched = duplicates.map(d => ({
+      ...d,
+      originalTransaction: d.originalTransactionId
+        ? (originalsMap[String(d.originalTransactionId)] || null)
+        : null,
+    }));
+
+    res.json({ duplicates: enriched, count: enriched.length });
+  } catch (error) {
+    console.error('[Plaid Route] Error fetching duplicates:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /plaid/transactions/:transactionId/resolve-duplicate
+ * Resolve a flagged duplicate transaction.
+ * Body: { action: 'keep' | 'dismiss' }
+ *   keep    – unmark; user says the two transactions are genuinely distinct
+ *   dismiss – delete the duplicate copy permanently
+ */
+router.post('/transactions/:transactionId/resolve-duplicate', authMiddleware, async (req, res) => {
+  try {
+    const { transactionId } = req.params;
+    const { householdId } = req.user;
+    const { action } = req.body;
+
+    if (!['keep', 'dismiss'].includes(action)) {
+      return res.status(400).json({ error: 'action must be "keep" or "dismiss"' });
+    }
+
+    const result = await resolveDuplicate(transactionId, householdId, action);
+    res.json({ message: 'Duplicate resolved', ...result });
+  } catch (error) {
+    console.error('[Plaid Route] Error resolving duplicate:', error);
+    res.status(400).json({ error: error.message });
   }
 });
 

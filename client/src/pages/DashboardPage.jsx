@@ -1,5 +1,6 @@
 import Layout from '../components/Layout';
 import MetricCard from '../components/MetricCard';
+import SkeletonBlock from '../components/SkeletonBlock';
 import SpendingByCategoryWidget from '../components/SpendingByCategoryWidget';
 import PendingTasksWidget from '../components/PendingTasksWidget';
 import MemberDetailsModal from '../components/MemberDetailsModal';
@@ -23,6 +24,7 @@ export default function DashboardPage(){
   const [monthlyData, setMonthlyData] = useState([]);
   const [monthlyLabels, setMonthlyLabels] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   const [household, setHousehold] = useState(null);
   const [pendingInvites, setPendingInvites] = useState([]);
   const [selectedMember, setSelectedMember] = useState(null);
@@ -36,6 +38,7 @@ export default function DashboardPage(){
       return;
     }
     console.log('[Dashboard] FETCHING DATA - householdId:', user.householdId, 'householdName:', user.householdName);
+    setFetchError(null);
     try {
       const now = new Date();
       const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -164,6 +167,12 @@ export default function DashboardPage(){
       setLoading(false);
     } catch (err) {
       console.error('[Dashboard] fetch error:', err);
+      const status = err?.response?.status;
+      if (status === 401) {
+        setFetchError('session_expired');
+      } else {
+        setFetchError('network');
+      }
       setLoading(false);
     }
   }, [user?.householdId]);
@@ -232,8 +241,86 @@ export default function DashboardPage(){
           <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300">{t('Household', 'Hogar')}: {user?.householdName || '—'}</p>
         </div>
 
-        {/* Subscription Banner */}
-        {subscription && subscription.subscription?.plan?.type === 'free' && (
+        {/* ── Session / network error ───────────────────────── */}
+        {fetchError && (
+          <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-5 flex items-start gap-4">
+            <span className="text-2xl flex-shrink-0">{fetchError === 'session_expired' ? '🔐' : '📡'}</span>
+            <div className="flex-1">
+              <p className="font-semibold text-red-800 dark:text-red-300 mb-1">
+                {fetchError === 'session_expired'
+                  ? 'Your session has expired'
+                  : 'Unable to load dashboard data'}
+              </p>
+              <p className="text-sm text-red-700 dark:text-red-400 mb-3">
+                {fetchError === 'session_expired'
+                  ? 'Please log in again to continue.'
+                  : 'Check your connection and try again.'}
+              </p>
+              {fetchError === 'session_expired' ? (
+                <button
+                  onClick={handleLogout}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  Go to Login
+                </button>
+              ) : (
+                <button
+                  onClick={fetchData}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Loading skeleton ──────────────────────────────── */}
+        {loading && (
+          <>
+            {/* Metric skeleton cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="bg-white dark:bg-gray-800 rounded-2xl shadow-md border border-gray-100 dark:border-gray-700 p-5 flex flex-col gap-3">
+                  <SkeletonBlock className="h-3 w-24 rounded" />
+                  <SkeletonBlock className="h-8 w-32 rounded-md" />
+                  <SkeletonBlock className="h-3 w-16 rounded" />
+                </div>
+              ))}
+            </div>
+            {/* Activity skeleton */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+              <div className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-2xl shadow-md border border-gray-100 dark:border-gray-700 p-5 flex flex-col gap-4">
+                <SkeletonBlock className="h-4 w-36 rounded" />
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <SkeletonBlock className="h-2 w-2 rounded-full" />
+                    <SkeletonBlock className="h-3 w-14 rounded" />
+                    <SkeletonBlock className="flex-1 h-3 rounded" />
+                    <SkeletonBlock className="h-3 w-16 rounded" />
+                  </div>
+                ))}
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md border border-gray-100 dark:border-gray-700 p-5 flex flex-col gap-4">
+                <SkeletonBlock className="h-4 w-28 rounded" />
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="flex flex-col gap-2">
+                    <div className="flex justify-between">
+                      <SkeletonBlock className="h-3 w-24 rounded" />
+                      <SkeletonBlock className="h-3 w-10 rounded" />
+                    </div>
+                    <SkeletonBlock className="h-2 w-full rounded-full" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {!loading && !fetchError && (
+          <>
+          {/* Subscription Banner */}
+          {subscription && subscription.subscription?.plan?.type === 'free' && (
           <div className="mb-5 flex items-center justify-between bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 border border-purple-200 dark:border-purple-800 rounded-xl px-4 py-3">
             <div className="flex items-center gap-3">
               <span className="text-xl">⭐</span>
@@ -487,6 +574,8 @@ export default function DashboardPage(){
             </div>
           </div>
         </div>
+          </>
+        )}
 
         {/* Member Details Modal */}
         {selectedMember && typeof selectedMember === 'object' && !Array.isArray(selectedMember) && (

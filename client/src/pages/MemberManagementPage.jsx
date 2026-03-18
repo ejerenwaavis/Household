@@ -5,6 +5,7 @@ import Layout from '../components/Layout';
 import HouseholdInviteForm from '../components/HouseholdInviteForm';
 import MemberDetailsModal from '../components/MemberDetailsModal';
 import api from '../services/api';
+import SkeletonBlock from '../components/SkeletonBlock';
 
 export default function MemberManagementPage() {
   const { user } = useAuth();
@@ -93,10 +94,34 @@ export default function MemberManagementPage() {
   if (loading) {
     return (
       <Layout>
-        <div className="flex items-center justify-center py-12">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-            <p className="text-gray-600">{t('Loading...', 'Cargando...')}</p>
+        <div className="max-w-5xl mx-auto">
+          {/* Header skeleton */}
+          <div className="mb-8 flex flex-col gap-2">
+            <SkeletonBlock className="h-8 w-56 rounded-lg" />
+            <SkeletonBlock className="h-4 w-72 rounded" />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Members list skeleton */}
+            <div className="flex flex-col gap-3">
+              <SkeletonBlock className="h-5 w-32 rounded mb-1" />
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="flex items-center gap-4 p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                  <SkeletonBlock className="h-10 w-10 rounded-full flex-shrink-0" />
+                  <div className="flex flex-col gap-2 flex-1">
+                    <SkeletonBlock className="h-4 w-32 rounded" />
+                    <SkeletonBlock className="h-3 w-40 rounded" />
+                  </div>
+                  <SkeletonBlock className="h-6 w-16 rounded-full" />
+                </div>
+              ))}
+            </div>
+            {/* Invite form skeleton */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 flex flex-col gap-4">
+              <SkeletonBlock className="h-5 w-36 rounded" />
+              <SkeletonBlock className="h-10 w-full rounded-lg" />
+              <SkeletonBlock className="h-10 w-full rounded-lg" />
+              <SkeletonBlock className="h-9 w-28 rounded-lg" />
+            </div>
           </div>
         </div>
       </Layout>

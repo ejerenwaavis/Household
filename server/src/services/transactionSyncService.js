@@ -10,6 +10,8 @@ import LinkedAccount from '../models/LinkedAccount.js';
 import PlaidTransaction from '../models/PlaidTransaction.js';
 import User from '../models/User.js';
 import * as CategorySuggestion from './categorySuggestionService.js';
+import { checkBudgetAlerts } from './budgetAlertService.js';
+import { detectAndMarkDuplicates } from './duplicateDetectionService.js';
 import logger from '../utils/logger.js';
 
 // Accounts whose household has had no user login in this many ms are skipped.
@@ -142,6 +144,24 @@ export async function syncAccountTransactions(linkedAccount) {
       duplicates,
       errors
     });
+
+    // Fire budget alerts for categories that appeared in newly synced transactions
+    if (synced > 0) {
+      const newTxns = await PlaidTransaction.find({
+        householdId,
+        linkedAccountId: _id,
+        syncedAt: { $gte: new Date(Date.now() - 60_000) }, // synced in last 60 s
+      }).lean();
+      const categories = [...new Set(newTxns.map(t => t.userCategory || t.primaryCategory).filter(Boolean))];
+      checkBudgetAlerts(householdId, categories).catch(e =>
+        logger.error('[TransactionSync] Budget alert error:', e)
+      );
+
+      // Run duplicate detection in background (non-blocking)
+      detectAndMarkDuplicates(householdId).catch(e =>
+        logger.error('[TransactionSync] Duplicate detection error:', e)
+      );
+    }
 
     return { synced, duplicates, errors };
   } catch (error) {

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useAuth } from '../hooks/useAuth';
 import api from '../services/api';
+import SkeletonBlock from '../components/SkeletonBlock';
 
 const STATUS_COLORS = {
   active: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400',
@@ -88,8 +89,36 @@ export default function SubscriptionPage() {
   if (loading) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-64">
-          <div className="w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
+        <div className="max-w-3xl mx-auto px-4 py-8">
+          {/* Header skeleton */}
+          <div className="mb-8 flex flex-col gap-2">
+            <SkeletonBlock className="h-8 w-40 rounded-lg" />
+            <SkeletonBlock className="h-4 w-52 rounded" />
+          </div>
+          {/* Plan card skeleton */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 flex flex-col gap-5">
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-2">
+                <SkeletonBlock className="h-6 w-28 rounded-lg" />
+                <SkeletonBlock className="h-9 w-24 rounded-md" />
+              </div>
+              <SkeletonBlock className="h-7 w-20 rounded-full" />
+            </div>
+            {/* Feature 2×2 grid */}
+            <div className="grid grid-cols-2 gap-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <SkeletonBlock className="h-4 w-4 rounded flex-shrink-0" />
+                  <SkeletonBlock className="h-3 flex-1 rounded" />
+                </div>
+              ))}
+            </div>
+            {/* Action buttons */}
+            <div className="flex gap-3 pt-2 border-t border-gray-100 dark:border-gray-700">
+              <SkeletonBlock className="h-10 w-36 rounded-lg" />
+              <SkeletonBlock className="h-10 w-28 rounded-lg" />
+            </div>
+          </div>
         </div>
       </Layout>
     );

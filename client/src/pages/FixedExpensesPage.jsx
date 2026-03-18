@@ -6,6 +6,7 @@ import FixedExpensePaymentsWidget from '../components/FixedExpensePaymentsWidget
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../context/LanguageContext';
 import api from '../services/api';
+import SkeletonBlock from '../components/SkeletonBlock';
 
 export default function FixedExpensesPage(){
   const { user } = useAuth();
@@ -69,26 +70,45 @@ export default function FixedExpensesPage(){
 
         <div className="mt-8">
           <h2 className="text-lg font-medium mb-4 text-gray-900 dark:text-white">{t('Your Fixed Expenses', 'Tus Gastos Fijos')}</h2>
-          
-          {/* Payment summary widget */}
-          <div className="mb-6">
-            <FixedExpensePaymentsWidget
-              currentMonth={currentMonth}
-              payments={payments}
-              totalFixed={total}
-            />
-          </div>
 
-          <FixedExpenseList 
-            householdId={user?.householdId} 
-            byGroup={byGroup}
-            total={total}
-            payments={payments}
-            currentMonth={currentMonth}
-            loading={loading}
-            refresh={fetchExpenses}
-            language={language}
-          />
+          {loading ? (
+            <div className="animate-pulse space-y-4">
+              <SkeletonBlock className="h-16 w-full rounded-xl mb-6" />
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-md border border-gray-200 dark:border-gray-700 space-y-3">
+                  <SkeletonBlock className="h-4 w-32 rounded" />
+                  {[...Array(3)].map((_, j) => (
+                    <div key={j} className="flex items-center justify-between">
+                      <SkeletonBlock className="h-3 w-40 rounded" />
+                      <SkeletonBlock className="h-3 w-16 rounded" />
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <>
+              {/* Payment summary widget */}
+              <div className="mb-6">
+                <FixedExpensePaymentsWidget
+                  currentMonth={currentMonth}
+                  payments={payments}
+                  totalFixed={total}
+                />
+              </div>
+
+              <FixedExpenseList
+                householdId={user?.householdId}
+                byGroup={byGroup}
+                total={total}
+                payments={payments}
+                currentMonth={currentMonth}
+                loading={loading}
+                refresh={fetchExpenses}
+                language={language}
+              />
+            </>
+          )}
         </div>
       </div>
     </Layout>

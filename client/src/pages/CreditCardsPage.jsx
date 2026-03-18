@@ -6,6 +6,7 @@ import CreditCardForm from '../components/CreditCardForm';
 import CreditCardList from '../components/CreditCardList';
 import api from '../services/api';
 import { exportCreditCards } from '../services/exportService';
+import SkeletonBlock from '../components/SkeletonBlock';
 
 export default function CreditCardsPage() {
   const { user } = useAuth();
@@ -78,46 +79,73 @@ export default function CreditCardsPage() {
           </div>
         </div>
 
-        {/* Summary Cards */}
-        {summary && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white dark:bg-gray-750 rounded-xl p-4 shadow-md border border-gray-200 dark:border-gray-700">
-              <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">{t('Total Debt', 'Deuda Total')}</div>
-              <div className="text-2xl font-bold text-red-600 dark:text-red-400">${summary.totalDebt?.toFixed(2) || '0.00'}</div>
+        {loading ? (
+          <div className="animate-pulse space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="bg-white dark:bg-gray-750 rounded-xl p-4 shadow-md border border-gray-200 dark:border-gray-700">
+                  <SkeletonBlock className="h-3 w-24 rounded mb-3" />
+                  <SkeletonBlock className="h-7 w-32 rounded" />
+                </div>
+              ))}
             </div>
-            <div className="bg-white dark:bg-gray-750 rounded-xl p-4 shadow-md border border-gray-200 dark:border-gray-700">
-              <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">{t('Original Balance', 'Balance Original')}</div>
-              <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">${summary.totalOriginal?.toFixed(2) || '0.00'}</div>
-            </div>
-            <div className="bg-white dark:bg-gray-750 rounded-xl p-4 shadow-md border border-gray-200 dark:border-gray-700">
-              <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">{t('Amount Paid', 'Pagado')}</div>
-              <div className="text-2xl font-bold text-green-600 dark:text-green-400">${summary.totalPaid?.toFixed(2) || '0.00'}</div>
-            </div>
-            <div className="bg-white dark:bg-gray-750 rounded-xl p-4 shadow-md border border-gray-200 dark:border-gray-700">
-              <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">{t('Progress', 'Progreso')}</div>
-              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{summary.overallProgress || 0}%</div>
+            <div className="space-y-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="bg-white dark:bg-gray-750 rounded-xl p-4 shadow-md border border-gray-200 dark:border-gray-700 flex items-center gap-4">
+                  <SkeletonBlock className="h-10 w-10 rounded-full flex-shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <SkeletonBlock className="h-4 w-40 rounded" />
+                    <SkeletonBlock className="h-3 w-24 rounded" />
+                  </div>
+                  <SkeletonBlock className="h-6 w-20 rounded" />
+                </div>
+              ))}
             </div>
           </div>
-        )}
+        ) : (
+          <>
+            {/* Summary Cards */}
+            {summary && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div className="bg-white dark:bg-gray-750 rounded-xl p-4 shadow-md border border-gray-200 dark:border-gray-700">
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">{t('Total Debt', 'Deuda Total')}</div>
+                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">${summary.totalDebt?.toFixed(2) || '0.00'}</div>
+                </div>
+                <div className="bg-white dark:bg-gray-750 rounded-xl p-4 shadow-md border border-gray-200 dark:border-gray-700">
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">{t('Original Balance', 'Balance Original')}</div>
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">${summary.totalOriginal?.toFixed(2) || '0.00'}</div>
+                </div>
+                <div className="bg-white dark:bg-gray-750 rounded-xl p-4 shadow-md border border-gray-200 dark:border-gray-700">
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">{t('Amount Paid', 'Pagado')}</div>
+                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">${summary.totalPaid?.toFixed(2) || '0.00'}</div>
+                </div>
+                <div className="bg-white dark:bg-gray-750 rounded-xl p-4 shadow-md border border-gray-200 dark:border-gray-700">
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">{t('Progress', 'Progreso')}</div>
+                  <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{summary.overallProgress || 0}%</div>
+                </div>
+              </div>
+            )}
 
-        {/* Add Card Form */}
-        {showForm && (
-          <div className="mb-6">
-            <CreditCardForm 
-              householdId={user?.householdId} 
-              onSuccess={handleCardAdded}
-              knownBanks={knownBanks}
+            {/* Add Card Form */}
+            {showForm && (
+              <div className="mb-6">
+                <CreditCardForm
+                  householdId={user?.householdId}
+                  onSuccess={handleCardAdded}
+                  knownBanks={knownBanks}
+                />
+              </div>
+            )}
+
+            {/* Cards List */}
+            <CreditCardList
+              cards={cards}
+              loading={loading}
+              onUpdate={fetchCards}
+              householdId={user?.householdId}
             />
-          </div>
+          </>
         )}
-
-        {/* Cards List */}
-        <CreditCardList 
-          cards={cards}
-          loading={loading}
-          onUpdate={fetchCards}
-          householdId={user?.householdId}
-        />
       </div>
     </Layout>
   );

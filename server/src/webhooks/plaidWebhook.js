@@ -5,6 +5,7 @@
 
 import PlaidService from '../services/plaidService.js';
 import LinkedAccount from '../models/LinkedAccount.js';
+import { syncAccountTransactions } from '../services/transactionSyncService.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -81,13 +82,16 @@ async function handleTransactionsWebhook(data, linkedAccount) {
 
   try {
     if (webhook_code === 'SYNC_UPDATES_AVAILABLE') {
-      // New transactions available to sync
-      // Queue a sync job for this account
+      // Trigger a real sync in the background — this is where budget alerts fire too
       linkedAccount.syncStatus = 'pending';
       linkedAccount.updatedAt = new Date();
       await linkedAccount.save();
 
-      logger.info('[PlaidWebhook] Queued transaction sync for account:', linkedAccount._id);
+      syncAccountTransactions(linkedAccount).catch(err =>
+        logger.error('[PlaidWebhook] Background sync failed:', err)
+      );
+
+      logger.info('[PlaidWebhook] Triggered background sync for account:', linkedAccount._id);
     }
 
     if (webhook_code === 'INITIAL_UPDATE_COMPLETE') {

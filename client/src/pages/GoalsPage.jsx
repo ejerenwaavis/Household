@@ -5,6 +5,7 @@ import GoalList from '../components/GoalList';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../context/LanguageContext';
 import api from '../services/api';
+import SkeletonBlock from '../components/SkeletonBlock';
 
 export default function GoalsPage() {
   const { user } = useAuth();
@@ -64,14 +65,32 @@ export default function GoalsPage() {
           </button>
         </div>
 
-        <GoalList
-          householdId={user?.householdId}
-          goals={goals}
-          linkedAccounts={linkedAccounts}
-          totalMonthlyContribution={totalMonthlyContribution}
-          loading={loading}
-          refresh={fetchGoals}
-        />
+        {loading ? (
+          <div className="animate-pulse space-y-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-md border border-gray-200 dark:border-gray-700 space-y-3">
+                <div className="flex items-center justify-between">
+                  <SkeletonBlock className="h-5 w-40 rounded" />
+                  <SkeletonBlock className="h-5 w-20 rounded" />
+                </div>
+                <SkeletonBlock className="h-2 w-full rounded-full" />
+                <div className="flex justify-between">
+                  <SkeletonBlock className="h-3 w-24 rounded" />
+                  <SkeletonBlock className="h-3 w-24 rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <GoalList
+            householdId={user?.householdId}
+            goals={goals}
+            linkedAccounts={linkedAccounts}
+            totalMonthlyContribution={totalMonthlyContribution}
+            loading={loading}
+            refresh={fetchGoals}
+          />
+        )}
       </div>
     </Layout>
   );

@@ -59,9 +59,42 @@ export const getTransactionsSummary = async (params, authToken) => {
   }
 };
 
+/**
+ * Get all transactions flagged as potential duplicates for the household
+ */
+export const getDuplicates = async () => {
+  try {
+    const response = await api.get(`${API_BASE}/duplicates`);
+    return response.data;
+  } catch (error) {
+    console.error('[TransactionService] Error fetching duplicates:', error);
+    throw error;
+  }
+};
+
+/**
+ * Resolve a duplicate transaction
+ * @param {string} transactionId
+ * @param {'keep'|'dismiss'} action
+ */
+export const resolveDuplicate = async (transactionId, action) => {
+  try {
+    const response = await api.post(
+      `${API_BASE}/transactions/${transactionId}/resolve-duplicate`,
+      { action }
+    );
+    return response.data;
+  } catch (error) {
+    console.error('[TransactionService] Error resolving duplicate:', error);
+    throw error;
+  }
+};
+
 export default {
   getTransactions,
   getTransaction,
   updateTransaction,
-  getTransactionsSummary
+  getTransactionsSummary,
+  getDuplicates,
+  resolveDuplicate,
 };

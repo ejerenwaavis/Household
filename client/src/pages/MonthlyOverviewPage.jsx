@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import api from '../services/api';
 import { exportMonthlyOverview } from '../services/exportService';
+import SkeletonBlock from '../components/SkeletonBlock';
 
 export default function MonthlyOverviewPage() {
   const { user } = useAuth();
@@ -103,9 +104,38 @@ export default function MonthlyOverviewPage() {
   if (loading) {
     return (
       <Layout>
-        <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto"></div>
-          <p className="text-gray-600 dark:text-gray-400 mt-4">{t('Loading...', 'Cargando...')}</p>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Header skeleton */}
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-col gap-2">
+              <SkeletonBlock className="h-8 w-48 rounded-lg" />
+              <SkeletonBlock className="h-4 w-80 rounded" />
+            </div>
+            <div className="flex gap-2">
+              <SkeletonBlock className="h-9 w-32 rounded-lg" />
+              <SkeletonBlock className="h-9 w-24 rounded-lg" />
+            </div>
+          </div>
+          {/* Table skeleton */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+            {/* Table header */}
+            <div className="grid grid-cols-6 gap-4 px-5 py-3 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+              {[...Array(6)].map((_, i) => (
+                <SkeletonBlock key={i} className="h-3 rounded" />
+              ))}
+            </div>
+            {/* Table rows */}
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="grid grid-cols-6 gap-4 px-5 py-4 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                <SkeletonBlock className="h-4 w-20 rounded" />
+                <SkeletonBlock className="h-4 rounded" />
+                <SkeletonBlock className="h-4 rounded" />
+                <SkeletonBlock className="h-4 rounded" />
+                <SkeletonBlock className="h-4 rounded" />
+                <SkeletonBlock className="h-6 w-16 rounded-lg" />
+              </div>
+            ))}
+          </div>
         </div>
       </Layout>
     );

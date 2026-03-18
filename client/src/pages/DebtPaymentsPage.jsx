@@ -6,6 +6,7 @@ import DebtPaymentForm from '../components/DebtPaymentForm';
 import EditDebtPaymentModal from '../components/EditDebtPaymentModal';
 import api from '../services/api';
 import { exportDebtPayments } from '../services/exportService';
+import SkeletonBlock from '../components/SkeletonBlock';
 
 export default function DebtPaymentsPage() {
   const { user } = useAuth();
@@ -111,9 +112,43 @@ export default function DebtPaymentsPage() {
   if (loading) {
     return (
       <Layout>
-        <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto"></div>
-          <p className="text-gray-600 dark:text-gray-400 mt-4">{t('Loading...', 'Cargando...')}</p>
+        <div className="max-w-6xl mx-auto">
+          {/* Header skeleton */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col gap-2">
+              <SkeletonBlock className="h-8 w-48 rounded-lg" />
+              <SkeletonBlock className="h-4 w-64 rounded" />
+            </div>
+            <div className="flex gap-2">
+              <SkeletonBlock className="h-9 w-24 rounded-lg" />
+              <SkeletonBlock className="h-9 w-24 rounded-lg" />
+            </div>
+          </div>
+          {/* Summary metric cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+            {[...Array(2)].map((_, i) => (
+              <div key={i} className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col gap-3">
+                <SkeletonBlock className="h-3 w-28 rounded" />
+                <SkeletonBlock className="h-8 w-32 rounded-md" />
+              </div>
+            ))}
+          </div>
+          {/* Month-group cards */}
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-4 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 dark:border-gray-700">
+                <SkeletonBlock className="h-4 w-24 rounded" />
+                <SkeletonBlock className="h-4 w-16 rounded" />
+              </div>
+              {[...Array(2)].map((_, j) => (
+                <div key={j} className="flex items-center gap-4 px-5 py-3 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                  <SkeletonBlock className="h-3 w-28 rounded" />
+                  <SkeletonBlock className="h-3 flex-1 rounded" />
+                  <SkeletonBlock className="h-3 w-20 rounded" />
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       </Layout>
     );
