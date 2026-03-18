@@ -8,6 +8,7 @@ import { Trash2, Check, RefreshCw, Eye, AlertCircle } from 'lucide-react';
 import Layout from '../components/Layout';
 import PlaidLink from '../components/PlaidLink';
 import * as PlaidService from '../services/plaidService';
+import api from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 
 const LinkedAccountsPage = () => {
@@ -18,6 +19,7 @@ const LinkedAccountsPage = () => {
   const [success, setSuccess] = useState(null);
   const [refreshing, setRefreshing] = useState(null);
   const [showDetails, setShowDetails] = useState(null);
+  const [syncing, setSyncing] = useState(false);
 
   /**
    * Fetch all linked accounts on component mount
@@ -119,10 +121,26 @@ const LinkedAccountsPage = () => {
   };
 
   /**
+   * Sync latest transactions for all linked accounts
+   */
+  const handleSyncTransactions = async () => {
+    try {
+      setSyncing(true);
+      setError(null);
+      const { data } = await api.post('/plaid/sync-now');
+      setSuccess(`✓ Synced ${data.synced} new transaction${data.synced !== 1 ? 's' : ''}`);
+      fetchLinkedAccounts(); // refresh lastSyncedAt timestamps
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to sync transactions');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  /**
    * Unlink an account
    */
-  const handleUnlink = async (accountId) => {
-    if (!window.confirm('Are you sure you want to unlink this account? This will stop syncing transactions.')) {
+  const handleUnlink = async (accountId) => {    if (!window.confirm('Are you sure you want to unlink this account? This will stop syncing transactions.')) {
       return;
     }
 
@@ -145,8 +163,22 @@ const LinkedAccountsPage = () => {
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">🏦 Bank Accounts</h1>
-          <p className="text-gray-600 dark:text-gray-400">Manage linked bank accounts and transactions</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">🏦 Bank Accounts</h1>
+              <p className="text-gray-600 dark:text-gray-400">Manage linked bank accounts and transactions</p>
+            </div>
+            {linkedAccounts.length > 0 && (
+              <button
+                onClick={handleSyncTransactions}
+                disabled={syncing}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
+              >
+                <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
+                {syncing ? 'Syncing...' : 'Sync Transactions'}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Error Alert */}

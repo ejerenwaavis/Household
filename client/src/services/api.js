@@ -70,7 +70,13 @@ api.interceptors.response.use(
     // Notify the app that the session has expired so a modal can be shown.
     // Use a custom event so axios (outside React) doesn't need to import context.
     if (error.response?.status === 401) {
-      window.dispatchEvent(new CustomEvent('session:expired'));
+      const code = error.response?.data?.code;
+      // Don't treat auth-endpoint 401s as session expiry — those are just wrong credentials.
+      const url = error.config?.url || '';
+      const isAuthEndpoint = /\/(login|register|passkey\/login)/.test(url);
+      if (!isAuthEndpoint) {
+        window.dispatchEvent(new CustomEvent('session:expired', { detail: { code } }));
+      }
     }
     return Promise.reject(error);
   }

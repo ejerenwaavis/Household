@@ -1,8 +1,10 @@
 import bcrypt from 'bcryptjs';
+import { createHash, randomBytes } from 'crypto';
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
+import { syncAccountTransactions } from '../services/transactionSyncService.js';
 import {
   generateRegistrationOptions,
   verifyRegistrationResponse,
@@ -30,6 +32,7 @@ import InsightCache from '../models/InsightCache.js';
 import Subscription from '../models/Subscription.js';
 import PlaidService from '../services/plaidService.js';
 import * as StripeService from '../services/stripeService.js';
+import { sendVerificationEmail } from '../services/emailService.js';
 
 const router = Router();
 
@@ -80,6 +83,9 @@ router.post('/register', validateBody(authSchemas.register), async (req, res, ne
     console.log('[AUTH] Household created:', { householdId, householdName });
 
     // Create user referencing that household
+    const verifyToken = randomBytes(32).toString('hex');
+    const verifyTokenHash = createHash('sha256').update(verifyToken).digest('hex');
+
     const user = await User.create({
       userId,
       email,
@@ -89,9 +95,18 @@ router.post('/register', validateBody(authSchemas.register), async (req, res, ne
       profile: { name },
       tokenVersion: 0,
       lastLoginAt: new Date(),
+      emailVerified: false,
+      emailVerifyToken: verifyTokenHash,
+      emailVerifyExpires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      emailFrozenAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),      // freeze after 7 days
     });
     
     console.log('[AUTH] User created successfully:', { userId, email, householdId });
+
+    // Send verification email (non-blocking — don't fail registration if email fails)
+    sendVerificationEmail(email, name, verifyToken).catch(err =>
+      console.error('[AUTH] Verification email failed to send:', err.message)
+    );
 
     // Generate tokens with rotation support
     const accessToken = TokenRotationService.generateAccessToken({
@@ -103,7 +118,7 @@ router.post('/register', validateBody(authSchemas.register), async (req, res, ne
     const refreshToken = TokenRotationService.generateRefreshToken(user._id, 0);
 
     res.status(201).json({
-      user: { userId, email, name, householdId, householdName, onboardingCompleted: false, mfaEnabled: false, passkeyCount: 0 },
+      user: { userId, email, name, householdId, householdName, onboardingCompleted: false, mfaEnabled: false, passkeyCount: 0, emailVerified: false },
       accessToken,
       refreshToken,
       expiresIn: 900, // 15 minutes in seconds
@@ -182,7 +197,23 @@ router.post('/login', validateBody(authSchemas.login), async (req, res, next) =>
       expiresAt: { $gt: new Date() }
     });
     
+    // Check if account is frozen (unverified after 7 days)
+    const now = new Date();
+    const accountFrozen = !user.emailVerified && user.emailFrozenAt && user.emailFrozenAt <= now;
+
     console.log('[AUTH] Login successful:', { userId: user.userId, email, householdId: user.householdId, pendingInvites: pendingInvites.length });
+
+    // Non-blocking: fetch fresh transactions for this user's accounts in the background.
+    // We don't await this — the login response goes back immediately.
+    import('../models/LinkedAccount.js').then(({ default: LinkedAccount }) => {
+      LinkedAccount.find({ householdId: user.householdId, isActive: true }).then(accounts => {
+        for (const account of accounts) {
+          syncAccountTransactions(account).catch(err =>
+            console.error('[AUTH] Background sync failed for account:', account._id, err.message)
+          );
+        }
+      });
+    }).catch(() => {});
 
     res.json({
       user: {
@@ -194,6 +225,8 @@ router.post('/login', validateBody(authSchemas.login), async (req, res, next) =>
         onboardingCompleted: user.onboardingCompleted || false,
         mfaEnabled: user.mfaEnabled || false,
         passkeyCount: user.passkeys?.length || 0,
+        emailVerified: user.emailVerified || false,
+        accountFrozen: accountFrozen || false,
       },
       accessToken,
       refreshToken,
@@ -213,6 +246,54 @@ router.post('/login', validateBody(authSchemas.login), async (req, res, next) =>
       code: error.code,
     });
     next(error);
+  }
+});
+
+// ── GET /auth/verify-email/:token ─────────────────────────────────────────────
+// Called when the user clicks the link in their verification email.
+router.get('/verify-email/:token', async (req, res, next) => {
+  try {
+    const hash = createHash('sha256').update(req.params.token).digest('hex');
+    const user = await User.findOne({ emailVerifyToken: hash });
+
+    if (!user) {
+      return res.status(400).json({ error: 'Verification link is invalid or has already been used.' });
+    }
+
+    user.emailVerified = true;
+    user.emailVerifyToken = null;
+    user.emailVerifyExpires = null;
+    user.emailFrozenAt = null;
+    await user.save();
+
+    console.log('[AUTH] Email verified for user:', user.userId);
+    res.json({ success: true, message: 'Email verified successfully.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── POST /auth/resend-verification ────────────────────────────────────────────
+// Re-sends the verification email (rate-limited by existing authLimiter on the router).
+router.post('/resend-verification', authMiddleware, async (req, res, next) => {
+  try {
+    const user = await User.findOne({ userId: req.user.userId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.emailVerified) return res.status(400).json({ error: 'Email is already verified.' });
+
+    // Issue a fresh token — reset the 7-day clock from now
+    const newToken = randomBytes(32).toString('hex');
+    const newHash = createHash('sha256').update(newToken).digest('hex');
+
+    user.emailVerifyToken = newHash;
+    user.emailVerifyExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    user.emailFrozenAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await user.save();
+
+    await sendVerificationEmail(user.email, user.profile.name, newToken);
+    res.json({ success: true, message: 'Verification email resent.' });
+  } catch (err) {
+    next(err);
   }
 });
 

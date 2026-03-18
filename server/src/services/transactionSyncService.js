@@ -8,8 +8,12 @@ import cron from 'node-cron';
 import PlaidService from './plaidService.js';
 import LinkedAccount from '../models/LinkedAccount.js';
 import PlaidTransaction from '../models/PlaidTransaction.js';
+import User from '../models/User.js';
 import * as CategorySuggestion from './categorySuggestionService.js';
 import logger from '../utils/logger.js';
+
+// Accounts whose household has had no user login in this many ms are skipped.
+const INACTIVE_THRESHOLD_MS = 48 * 60 * 60 * 1000; // 48 hours
 
 /**
  * Sync transactions for a specific linked account
@@ -178,11 +182,38 @@ export async function syncAllTransactions() {
 
     logger.info('[TransactionSync] Syncing', linkedAccounts.length, 'accounts...');
 
+    // Build a set of householdIds with at least one recently-active user so we
+    // don't burn Plaid API quota on households where nobody has logged in recently.
+    const cutoff = new Date(Date.now() - INACTIVE_THRESHOLD_MS);
+    const activeUsers = await User.find(
+      { lastLoginAt: { $gte: cutoff } },
+      { householdId: 1 }
+    ).lean();
+    const activeHouseholds = new Set(activeUsers.map(u => u.householdId));
+
     const results = [];
     let totalSynced = 0;
 
     // Sync each account sequentially to avoid rate limiting
     for (const account of linkedAccounts) {
+      // Skip if no user in this household has been active recently.
+      // Webhooks cover real-time updates; this job is just a fallback.
+      if (!activeHouseholds.has(account.householdId)) {
+        logger.info('[TransactionSync] Skipping inactive household:', {
+          accountId: account._id,
+          householdId: account.householdId,
+        });
+        results.push({
+          accountId: account._id,
+          accountName: account.accountName,
+          synced: 0,
+          duplicates: 0,
+          errors: 0,
+          skipped: true,
+        });
+        continue;
+      }
+
       try {
         const result = await syncAccountTransactions(account);
         results.push({
@@ -227,12 +258,14 @@ export async function syncAllTransactions() {
 
 /**
  * Initialize background sync job
- * Runs every 15 minutes
+ * Runs every 6 hours as a fallback catch-all.
+ * Real-time updates arrive via Plaid webhooks (plaidWebhook.js) so frequent
+ * polling is unnecessary and wastes Plaid API quota.
  */
 export function initializeTransactionSyncJob() {
   try {
-    // Schedule sync every 15 minutes
-    const job = cron.schedule('*/15 * * * *', async () => {
+    // Once per day at 3 AM — webhooks handle real-time, login sync handles session-start.
+    const job = cron.schedule('0 3 * * *', async () => {
       try {
         logger.info('[TransactionSync] Running scheduled transaction sync...');
         await syncAllTransactions();
@@ -241,7 +274,7 @@ export function initializeTransactionSyncJob() {
       }
     });
 
-    logger.info('[TransactionSync] Background sync job initialized (every 15 minutes)');
+    logger.info('[TransactionSync] Background sync job initialized (daily at 3 AM, active households only)');
     return job;
   } catch (error) {
     logger.error('[TransactionSync] Failed to initialize sync job:', error);

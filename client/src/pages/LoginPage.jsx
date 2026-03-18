@@ -24,6 +24,10 @@ export default function LoginPage() {
       setInviteToken(token);
       fetchInviteInfo(token);
     }
+    // Show a clear message when redirected here because the account was deleted
+    if (searchParams.get('error') === 'account_not_found') {
+      setError('This account no longer exists. Please register a new account or contact support.');
+    }
   }, [searchParams]);
 
   const fetchInviteInfo = async (token) => {

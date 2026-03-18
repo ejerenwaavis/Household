@@ -31,6 +31,11 @@ const userSchema = new mongoose.Schema({
   mfaEnabled: { type: Boolean, default: false },
   mfaSecret: { type: String, default: null },
   onboardingCompleted: { type: Boolean, default: false },
+  // ── Email verification ────────────────────────────────────────────────────
+  emailVerified: { type: Boolean, default: false },
+  emailVerifyToken: { type: String, default: null },
+  emailVerifyExpires: { type: Date, default: null },
+  emailFrozenAt: { type: Date, default: null }, // set when account is frozen (7 days after register)
   passkeys: [{
     credentialID: { type: String, required: true },
     publicKey: { type: String, required: true },

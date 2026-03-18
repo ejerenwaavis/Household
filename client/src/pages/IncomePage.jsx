@@ -197,6 +197,8 @@ export default function IncomePage(){
             title={getViewTitle()}
             entries={getEntriesForView()}
             members={members}
+            householdId={user?.householdId}
+            onRefresh={fetchCurrentMonth}
             onClose={() => setViewingWeek(null)}
           />
         )}

@@ -309,4 +309,94 @@ export default {
   sendInviteEmail,
   sendWelcomeEmail,
   testEmailConfiguration,
+  sendVerificationEmail,
 };
+
+/**
+ * Send email address verification email.
+ * @param {string} email
+ * @param {string} name
+ * @param {string} token  — raw hex token (not hashed)
+ */
+export async function sendVerificationEmail(email, name, token) {
+  if (!transporter) {
+    console.warn('[email service] Not configured — skipping verification email for:', email);
+    return false;
+  }
+
+  try {
+    const frontendUrl = getFrontendURL();
+    const link = `${frontendUrl}/verify-email/${token}`;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }
+            .button { display: inline-block; background: #667eea; color: white; padding: 14px 36px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 16px; margin: 20px 0; }
+            .footer { text-align: center; color: #888; font-size: 12px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; }
+            .link-block { background: #f0f0f0; padding: 12px; border-radius: 4px; word-break: break-all; font-family: monospace; font-size: 12px; margin: 15px 0; color: #555; }
+            .warning { background: #fff8e1; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 4px; font-size: 13px; color: #92400e; margin-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1 style="margin:0">Verify Your Email ✉️</h1>
+            </div>
+            <div class="content">
+              <p>Hi <strong>${name}</strong>,</p>
+              <p>Thanks for creating your Household account. Please verify your email address to keep your account active.</p>
+              <center>
+                <a href="${link}" class="button">Verify My Email</a>
+              </center>
+              <p style="font-size:13px; color:#666;">Button not working? Copy and paste this link into your browser:</p>
+              <div class="link-block">${link}</div>
+              <div class="warning">
+                ⚠️ <strong>Important:</strong> If you don't verify within <strong>7 days</strong>, your account will be frozen until verified.
+              </div>
+              <p style="color:#666; font-size:13px; margin-top:20px;">
+                If you didn't create this account, you can safely ignore this email.
+              </p>
+            </div>
+            <div class="footer">
+              <p>This is an automated message. Please don't reply to this email.</p>
+              <p>© ${new Date().getFullYear()} Household Budget Manager. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const text = `
+Hi ${name},
+
+Please verify your email address to keep your Household account active.
+
+Verification link: ${link}
+
+IMPORTANT: If you don't verify within 7 days, your account will be frozen until verified.
+
+If you didn't create this account, you can safely ignore this email.
+    `.trim();
+
+    const result = await transporter.sendMail({
+      from: process.env.EMAIL_FROM || 'noreply@household.local',
+      to: email,
+      subject: 'Verify your Household email address',
+      text,
+      html,
+    });
+
+    console.log('[email service] Verification email sent:', { email, messageId: result.messageId });
+    return true;
+  } catch (err) {
+    console.error('[email service] Failed to send verification email:', { email, error: err.message });
+    return false;
+  }
+}

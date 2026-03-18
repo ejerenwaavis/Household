@@ -17,27 +17,23 @@ const router = Router();
 router.post('/complete', authMiddleware, async (req, res, next) => {
   try {
     const { userId, householdId } = req.user;
-    const { income, fixedExpenses = [], goals = [] } = req.body;
+    const { income, weeklyActuals = [], fixedExpenses = [], goals = [] } = req.body;
 
     const promises = [];
 
     // ── Income ──────────────────────────────────────────────────────────────
-    if (income && income.amount > 0) {
+    // Seed one Income document per week the user confirmed receiving pay.
+    // weeklyActuals = [{week, amount, contributorName}] — only past/current weeks,
+    // actual amounts the user entered. Nothing is assumed or projected forward.
+    if (weeklyActuals.length > 0) {
       const now = new Date();
       const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-      // Calculate weekly amounts based on frequency
-      let weeklyAmount = 0;
-      switch (income.frequency) {
-        case 'weekly':      weeklyAmount = income.amount; break;
-        case 'biweekly':    weeklyAmount = income.amount / 2; break;
-        case 'monthly':     weeklyAmount = income.amount / 4; break;
-        case 'semimonthly': weeklyAmount = income.amount / 2; break;
-        default:            weeklyAmount = income.amount / 4;
-      }
-
-      // Create income entries for all 4 weeks of the current month
-      for (let week = 1; week <= 4; week++) {
+      for (const { week, amount, contributorName: cn } of weeklyActuals) {
+        if (!amount || Number(amount) <= 0) continue;
+        const weekStartDay = (week - 1) * 7 + 1;
+        const entryDate = new Date(`${month}-${String(weekStartDay).padStart(2, '0')}T12:00:00Z`);
+        const amt = Math.round(Number(amount) * 100) / 100; // precision to the cent
         promises.push(
           Income.findOneAndUpdate(
             { householdId, month, week },
@@ -45,12 +41,12 @@ router.post('/complete', authMiddleware, async (req, res, next) => {
               $setOnInsert: {
                 householdId,
                 userId,
-                contributorName: income.contributorName || 'Primary',
+                contributorName: cn || income?.contributorName || 'Primary',
                 week,
                 month,
-                weeklyTotal: weeklyAmount,
-                dailyBreakdown: [],
-                projection: { currentPace: weeklyAmount * 4, confidence: 'high' },
+                weeklyTotal: amt,
+                dailyBreakdown: [{ date: entryDate.toISOString(), amount: amt, source: 'onboarding' }],
+                projection: { currentPace: amt, confidence: 1 },
                 createdAt: new Date(),
               }
             },

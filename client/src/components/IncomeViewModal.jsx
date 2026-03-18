@@ -2,18 +2,34 @@ import React from 'react';
 import api from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 
-export default function IncomeViewModal({ title, entries = [], members = [], onClose }){
+/** Resolve the true dollar amount from any Income document shape */
+function resolveAmount(e) {
+  if (typeof e.weeklyTotal === 'number' && e.weeklyTotal > 0) return e.weeklyTotal;
+  if (typeof e.amount === 'number') return e.amount;
+  if (typeof e.dailyAmount === 'number') return e.dailyAmount;
+  if (Array.isArray(e.dailyBreakdown) && e.dailyBreakdown.length) {
+    return e.dailyBreakdown.reduce((s, d) => s + (Number(d.amount) || 0), 0);
+  }
+  return 0;
+}
+
+export default function IncomeViewModal({ title, entries = [], members = [], householdId, onRefresh, onClose }) {
   const { t } = useLanguage();
 
   const handleDelete = async (entry) => {
     const id = entry._id || entry.id;
-    if (!window.confirm('Delete this income entry?')) return;
+    if (!id || !householdId) {
+      alert('Cannot delete: missing entry ID or household.');
+      return;
+    }
+    if (!window.confirm(t('Delete this income entry?', '¿Eliminar esta entrada de ingreso?'))) return;
     try {
-      // Would need householdId - pass as prop or get from entry
-      console.log('[IncomeViewModal] delete clicked for', id);
-      alert('Delete functionality needs householdId. Please close modal and delete from main list.');
+      await api.delete(`/income/${householdId}/${id}`);
+      onRefresh && onRefresh();
+      onClose();
     } catch (err) {
       console.error('[IncomeViewModal] delete error', err);
+      alert(err?.response?.data?.error || t('Failed to delete', 'Error al eliminar'));
     }
   };
 
@@ -41,35 +57,35 @@ export default function IncomeViewModal({ title, entries = [], members = [], onC
             <ul className="space-y-4">
               {entries.map((e, i) => {
                 const key = e._id || e.id || i;
-                
-                // Determine amount safely
-                let amountVal = 0;
-                if (typeof e.amount === 'number') amountVal = e.amount;
-                else if (typeof e.dailyAmount === 'number') amountVal = e.dailyAmount;
-                else if (Array.isArray(e.dailyBreakdown) && e.dailyBreakdown.length) {
-                  amountVal = e.dailyBreakdown.reduce((s, d) => s + (Number(d.amount) || 0), 0);
-                }
-
-                // Determine source, date, and contributor
+                const amountVal = resolveAmount(e);
                 const sourceText = e.source || (Array.isArray(e.dailyBreakdown) && e.dailyBreakdown[0]?.source) || 'Manual';
                 const dateText = e.date || (Array.isArray(e.dailyBreakdown) && e.dailyBreakdown[0]?.date) || null;
                 const contributorText = e.contributorName || 'Unknown';
 
                 return (
-                  <div key={key} className="flex justify-between items-start bg-gray-50 dark:bg-gray-700 p-4 rounded-lg border border-gray-100 dark:border-gray-600">
+                  <div key={key} className="flex justify-between items-center bg-gray-50 dark:bg-gray-700 p-4 rounded-lg border border-gray-100 dark:border-gray-600">
                     <div className="flex-1">
                       <div className="text-sm font-medium text-gray-900 dark:text-white">
                         {sourceText} • <span className="text-indigo-600 dark:text-indigo-400">{contributorText}</span>
                       </div>
                       <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {e.description ? `${e.description}` : ''}
-                        {dateText && ` ${e.description ? '•' : ''} ${new Date(dateText).toLocaleDateString()}`}
+                        {e.description && `${e.description}`}
+                        {dateText && ` ${e.description ? '• ' : ''}${new Date(dateText).toLocaleDateString()}`}
+                        {e.week && <span className="ml-1 text-gray-400">· Week {e.week}</span>}
                       </div>
                     </div>
-                    <div className="text-right ml-4">
-                      <div className="text-lg font-semibold text-gray-900 dark:text-white">
-                        ${Number(amountVal || 0).toFixed(2)}
+                    <div className="flex items-center gap-4 ml-4">
+                      <div className="text-lg font-semibold text-gray-900 dark:text-white tabular-nums">
+                        ${Number(amountVal).toFixed(2)}
                       </div>
+                      {householdId && (
+                        <button
+                          onClick={() => handleDelete(e)}
+                          className="text-red-400 hover:text-red-600 text-sm font-medium transition-colors"
+                        >
+                          {t('Delete', 'Eliminar')}
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -83,16 +99,8 @@ export default function IncomeViewModal({ title, entries = [], members = [], onC
                 <span className="text-gray-600 dark:text-gray-400 font-medium">
                   {t('Total', 'Total')}:
                 </span>
-                <span className="text-2xl font-bold text-indigo-600">
-                  ${entries.reduce((sum, e) => {
-                    let amt = 0;
-                    if (typeof e.amount === 'number') amt = e.amount;
-                    else if (typeof e.dailyAmount === 'number') amt = e.dailyAmount;
-                    else if (Array.isArray(e.dailyBreakdown) && e.dailyBreakdown.length) {
-                      amt = e.dailyBreakdown.reduce((s, d) => s + (Number(d.amount) || 0), 0);
-                    }
-                    return sum + amt;
-                  }, 0).toFixed(2)}
+                <span className="text-2xl font-bold text-indigo-600 tabular-nums">
+                  ${entries.reduce((sum, e) => sum + resolveAmount(e), 0).toFixed(2)}
                 </span>
               </div>
             </div>
@@ -111,3 +119,5 @@ export default function IncomeViewModal({ title, entries = [], members = [], onC
     </div>
   );
 }
+
+

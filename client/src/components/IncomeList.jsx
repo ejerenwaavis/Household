@@ -63,6 +63,8 @@ export default function IncomeList({ householdId, entries = [], members = [], lo
               // sum daily breakdown amounts (fallback)
               amountVal = e.dailyBreakdown.reduce((s, d) => s + (Number(d.amount) || 0), 0);
             }
+            // Fall back to weeklyTotal (e.g. entries seeded from onboarding)
+            if (amountVal === 0 && typeof e.weeklyTotal === 'number') amountVal = e.weeklyTotal;
 
             // Determine source, date, and contributor name from various shapes
             let sourceText = e.source || (Array.isArray(e.dailyBreakdown) && e.dailyBreakdown[0]?.source) || 'Manual';

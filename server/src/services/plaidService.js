@@ -27,6 +27,8 @@ export class PlaidService {
     try {
       console.log('[Plaid] Creating link token for user:', { userId, householdId });
 
+      const webhookUrl = process.env.PLAID_WEBHOOK_URL || `${process.env.API_URL || 'https://api.aceddivision.com'}/api/plaid/webhook`;
+
       const response = await plaidClient.linkTokenCreate({
         user: { client_user_id: userId },
         client_name: 'Household Budget Manager',
@@ -34,7 +36,7 @@ export class PlaidService {
         // Only request transactions permission (can expand later)
         products: ['transactions'],
         country_codes: ['US', 'CA', 'GB'],
-        // Can also add webhook_url here if needed
+        webhook: webhookUrl,
       });
 
       console.log('[Plaid] Link token created:', response.data.link_token);
@@ -297,6 +299,25 @@ export class PlaidService {
     } catch (error) {
       console.error('[Plaid] Error fetching balance:', error);
       throw new Error(`Failed to fetch balance: ${error.message}`);
+    }
+  }
+
+  /**
+   * Update the webhook URL registered against an existing Plaid item.
+   * Call this once per unique access token to backfill all existing linked accounts.
+   */
+  static async updateItemWebhook(accessToken, webhookUrl) {
+    try {
+      console.log('[Plaid] Updating item webhook URL');
+      await plaidClient.itemWebhookUpdate({
+        access_token: accessToken,
+        webhook: webhookUrl,
+      });
+      console.log('[Plaid] Webhook URL updated successfully');
+      return true;
+    } catch (error) {
+      console.error('[Plaid] Error updating webhook URL:', error);
+      throw new Error(`Failed to update webhook URL: ${error.message}`);
     }
   }
 

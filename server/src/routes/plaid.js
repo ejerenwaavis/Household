@@ -495,6 +495,51 @@ router.post('/sync-now', authMiddleware, async (req, res) => {
 });
 
 /**
+ * POST /plaid/update-all-webhooks
+ * One-time admin operation: registers the webhook URL with every existing Plaid item
+ * so Plaid sends real-time transaction events to this server.
+ * Restricted to household owners.
+ */
+router.post('/update-all-webhooks', authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== 'owner') {
+      return res.status(403).json({ error: 'Owner role required' });
+    }
+
+    const webhookUrl = process.env.PLAID_WEBHOOK_URL ||
+      `${process.env.API_URL || 'https://api.aceddivision.com'}/api/plaid/webhook`;
+
+    // Unique access tokens — multiple DB accounts can share one Plaid item
+    const allAccounts = await LinkedAccount.find({ isActive: true }).lean();
+    const seen = new Set();
+    const unique = allAccounts.filter(a => {
+      if (seen.has(a.plaidAccessToken)) return false;
+      seen.add(a.plaidAccessToken);
+      return true;
+    });
+
+    const results = [];
+    for (const account of unique) {
+      try {
+        await PlaidService.updateItemWebhook(account.plaidAccessToken, webhookUrl);
+        results.push({ itemId: account.plaidItemId, accountName: account.accountName, status: 'updated' });
+      } catch (err) {
+        results.push({ itemId: account.plaidItemId, accountName: account.accountName, status: 'error', error: err.message });
+      }
+    }
+
+    const updated = results.filter(r => r.status === 'updated').length;
+    const errors  = results.filter(r => r.status === 'error').length;
+
+    console.log('[Plaid] Webhook backfill complete:', { webhookUrl, updated, errors });
+    res.json({ webhookUrl, total: unique.length, updated, errors, results });
+  } catch (error) {
+    console.error('[Plaid] Error updating all webhooks:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * POST /plaid/webhook
  * Webhook endpoint for Plaid real-time updates
  * Receives notifications about transactions, account changes, and errors

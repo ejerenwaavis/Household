@@ -24,7 +24,7 @@ export function verifyToken(token) {
   }
 }
 
-export const authMiddleware = (req, res, next) => {
+export const authMiddleware = async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
 
   if (!token) {
@@ -37,6 +37,31 @@ export const authMiddleware = (req, res, next) => {
   }
 
   req.user = decoded;
+
+  // Skip freeze check for verify/resend endpoints so users can still verify
+  const path = req.path || '';
+  const skipFreeze = path.includes('/verify-email') || path.includes('/resend-verification') || path.includes('/logout');
+  if (!skipFreeze) {
+    try {
+      const User = (await import('../models/User.js')).default;
+      const dbUser = await User.findOne({ userId: decoded.userId }).select('emailVerified emailFrozenAt').lean();
+      if (!dbUser) {
+        return res.status(401).json({
+          error: 'This account no longer exists.',
+          code: 'ACCOUNT_NOT_FOUND',
+        });
+      }
+      if (!dbUser.emailVerified && dbUser.emailFrozenAt && dbUser.emailFrozenAt <= new Date()) {
+        return res.status(403).json({
+          error: 'Account frozen. Please verify your email address to continue.',
+          code: 'ACCOUNT_FROZEN',
+        });
+      }
+    } catch (_) {
+      // Non-fatal — proceed if DB check fails
+    }
+  }
+
   next();
 };
 

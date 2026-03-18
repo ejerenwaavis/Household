@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Sidebar from './Sidebar';
 import MobileSidebar from './MobileSidebar';
 import Topbar from './Topbar';
+import EmailVerificationBanner from './EmailVerificationBanner';
 
 export default function Layout({ children }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -12,6 +13,7 @@ export default function Layout({ children }) {
       <MobileSidebar isOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
       <div className="flex-1 flex flex-col">
         <Topbar onMobileMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)} />
+        <EmailVerificationBanner />
         <main className="p-6 lg:p-8">{children}</main>
       </div>
     </div>

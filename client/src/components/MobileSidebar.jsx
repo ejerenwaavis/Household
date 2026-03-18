@@ -4,7 +4,7 @@ import { useTheme } from '../context/ThemeContext';
 
 export default function MobileSidebar({ isOpen, onClose }) {
   const loc = useLocation();
-  const { language, setLanguage } = useLanguage();
+  const { language, setLanguage, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const active = (path) => loc.pathname === path;
 
@@ -23,19 +23,19 @@ export default function MobileSidebar({ isOpen, onClose }) {
   };
 
   const navItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: '📊', color: 'indigo' },
-    { path: '/income', label: 'Income', icon: '💰', color: 'green' },
-    { path: '/fixed-expenses', label: 'Fixed Expenses', icon: '✅', color: 'red' },
-    { path: '/expenses', label: 'Expenses', icon: '🛒', color: 'orange' },
-    { path: '/goals', label: 'Goals', icon: '🎯', color: 'teal' },
-    { path: '/credit-cards', label: 'Credit Cards', icon: '💳', color: 'pink' },
-    { path: '/monthly-overview', label: 'Overview', icon: '📈', color: 'blue' },
-    { path: '/finance-report', label: 'Finance Meeting', icon: '📑', color: 'indigo' },
-    { path: '/members', label: 'Members', icon: '👥', color: 'purple' },
-    { path: '/linked-accounts', label: 'Linked Accounts', icon: '🏦', color: 'blue' },
-    { path: '/transactions/review', label: 'Review Transactions', icon: '📋', color: 'blue' },
-    { path: '/insights', label: 'AI Insights', icon: '🧠', color: 'purple' },
-    { path: '/subscription', label: 'Subscription', icon: '⭐', color: 'purple' },
+    { path: '/dashboard', label: t('Dashboard', 'Tablero'), icon: '📊', color: 'indigo' },
+    { path: '/income', label: t('Income', 'Ingresos'), icon: '💰', color: 'green' },
+    { path: '/fixed-expenses', label: t('Fixed Expenses', 'Gastos Fijos'), icon: '✅', color: 'red' },
+    { path: '/expenses', label: t('Variable Expenses', 'Gastos Variables'), icon: '🛒', color: 'orange' },
+    { path: '/goals', label: t('Goals & Funds', 'Metas y Fondos'), icon: '🎯', color: 'teal' },
+    { path: '/credit-cards', label: t('Credit Cards', 'Tarjetas de Crédito'), icon: '💳', color: 'pink' },
+    { path: '/monthly-overview', label: t('Monthly Overview', 'Resumen Mensual'), icon: '📈', color: 'blue' },
+    { path: '/finance-report', label: t('Finance Report', 'Informe Financiero'), icon: '📑', color: 'indigo' },
+    { path: '/members', label: t('Members', 'Miembros'), icon: '👥', color: 'purple' },
+    { path: '/linked-accounts', label: t('Linked Accounts', 'Cuentas Vinculadas'), icon: '🏦', color: 'blue' },
+    { path: '/transactions/review', label: t('Transactions', 'Transacciones'), icon: '📋', color: 'blue' },
+    { path: '/insights', label: t('AI Insights', 'Perspectivas IA'), icon: '🧠', color: 'purple' },
+    { path: '/subscription', label: t('Subscription', 'Suscripción'), icon: '⭐', color: 'purple' },
   ];
 
   if (!isOpen) return null;
@@ -88,23 +88,23 @@ export default function MobileSidebar({ isOpen, onClose }) {
           <div className="flex items-center justify-center gap-2">
             <button
               onClick={() => setLanguage('en')}
-              className={`flex-1 py-2 rounded text-sm transition-all ${
+              className={`flex-1 py-2 rounded text-sm font-bold transition-all ${
                 language === 'en'
-                  ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400 font-bold'
+                  ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400'
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
               }`}
             >
-              🇺🇸
+              EN
             </button>
             <button
               onClick={() => setLanguage('es')}
-              className={`flex-1 py-2 rounded text-sm transition-all ${
+              className={`flex-1 py-2 rounded text-sm font-bold transition-all ${
                 language === 'es'
-                  ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400 font-bold'
+                  ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400'
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
               }`}
             >
-              🇪🇸
+              ES
             </button>
           </div>
 
@@ -113,7 +113,7 @@ export default function MobileSidebar({ isOpen, onClose }) {
             onClick={toggleTheme}
             className="w-full py-2 px-3 rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-all flex items-center justify-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300"
           >
-            {theme === 'light' ? '🌙 Dark Mode' : '☀️ Light Mode'}
+            {theme === 'light' ? `🌙 ${t('Dark Mode', 'Modo Oscuro')}` : `☀️ ${t('Light Mode', 'Modo Claro')}`}
           </button>
         </div>
       </aside>

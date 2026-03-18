@@ -98,6 +98,15 @@ export default function OnboardingPage() {
     { name: '', target: '', monthlyContribution: '', type: 'Emergency', currentBalance: '' },
   ]);
 
+  // Week actuals — only the weeks that have already started this month
+  const _obNow = new Date();
+  const currentWeekOfMonth = Math.min(4, Math.ceil(_obNow.getDate() / 7));
+  const _obMonthShort = _obNow.toLocaleString('en-US', { month: 'short' });
+  const _obDaysInMonth = new Date(_obNow.getFullYear(), _obNow.getMonth() + 1, 0).getDate();
+  const [weekActuals, setWeekActuals] = useState(
+    Array.from({ length: currentWeekOfMonth }, (_, i) => ({ week: i + 1, amount: '' }))
+  );
+
   const [bankLinked, setBankLinked] = useState(false);
   const [passkeyRegistered, setPasskeyRegistered] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
@@ -169,8 +178,18 @@ export default function OnboardingPage() {
             currentBalance: parseFloat(g.currentBalance) || 0,
           }));
 
+        // Build per-week actuals — only weeks the user confirmed receiving income
+        const weeklyActuals = weekActuals
+          .filter(w => parseFloat(w.amount) > 0)
+          .map(w => ({
+            week: w.week,
+            amount: parseFloat(w.amount),
+            contributorName: income.contributorName || 'Primary',
+          }));
+
         await api.post('/onboarding/complete', {
           income: income.amount ? { ...income, amount: parseFloat(income.amount) } : null,
+          weeklyActuals,
           fixedExpenses,
           goals: goalsPayload,
         });
@@ -292,6 +311,55 @@ export default function OnboardingPage() {
                     in take-home pay.
                   </div>
                 )}
+
+                {/* ── Actual income received this month, week by week ── */}
+                <div className="space-y-2">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">
+                      What have you actually received this month?
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Enter only amounts already paid to you. Leave blank for weeks with no income.
+                    </p>
+                  </div>
+                  {weekActuals.map((w, i) => {
+                    const wStart = (w.week - 1) * 7 + 1;
+                    const wEnd = Math.min(w.week * 7, _obDaysInMonth);
+                    const isCurrentWk = w.week === currentWeekOfMonth;
+                    const weeklyDefault = income.amount ? (() => {
+                      const a = parseFloat(income.amount);
+                      if (income.frequency === 'weekly') return a;
+                      if (income.frequency === 'biweekly') return a / 2;
+                      if (income.frequency === 'semimonthly') return a / 2;
+                      return a / 4;
+                    })() : null;
+                    return (
+                      <div key={w.week} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                        <span className="text-sm text-gray-600 flex-1 min-w-0">
+                          <span className="font-medium">W{w.week}</span>
+                          <span className="text-gray-400 ml-1">({_obMonthShort} {wStart}–{wEnd})</span>
+                          {isCurrentWk && (
+                            <span className="ml-1 text-xs text-indigo-600 font-medium">current</span>
+                          )}
+                        </span>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <span className="text-gray-400 text-sm">$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="w-28 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-indigo-400"
+                            placeholder={weeklyDefault ? weeklyDefault.toFixed(2) : '0.00'}
+                            value={w.amount}
+                            onChange={e => setWeekActuals(prev =>
+                              prev.map((wa, idx) => idx === i ? { ...wa, amount: e.target.value } : wa)
+                            )}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -324,7 +392,12 @@ export default function OnboardingPage() {
                       <input
                         type="checkbox"
                         checked={presets[preset.name]?.enabled || false}
-                        onChange={() => {}}
+                        onChange={() =>
+                          setPresets(p => ({
+                            ...p,
+                            [preset.name]: { ...p[preset.name], enabled: !p[preset.name]?.enabled },
+                          }))
+                        }
                         className="h-4 w-4 text-indigo-600 rounded flex-shrink-0"
                         onClick={e => e.stopPropagation()}
                       />
