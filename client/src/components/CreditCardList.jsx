@@ -66,6 +66,9 @@ export default function CreditCardList({ cards, loading, onUpdate, householdId }
           const payoffPercent = card.payoffPercent || 0;
           const remainingDebt = card.currentBalance || 0;
           const totalPaid = (card.originalBalance || 0) - remainingDebt;
+          const isSynced = card.isSynced || card.sourceType === 'plaid';
+          const availableCredit = Number(card.availableBalance || 0);
+          const utilizationPercent = Number(card.utilizationPercent || 0);
 
           return (
             <div
@@ -78,8 +81,14 @@ export default function CreditCardList({ cards, loading, onUpdate, householdId }
                   <div className="flex items-center gap-3 mb-2">
                     <h3 className="text-xl font-bold text-gray-800">{card.cardName}</h3>
                     <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium">
-                      {card.holder}
+                      {isSynced ? t('Plaid Sync', 'Plaid Sync') : card.holder}
                     </span>
+                    {isSynced && (
+                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">
+                        {card.accountSubtype || 'credit'}
+                        {card.accountMask ? ` ••${card.accountMask}` : ''}
+                      </span>
+                    )}
                   </div>
                   
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -88,46 +97,48 @@ export default function CreditCardList({ cards, loading, onUpdate, householdId }
                       <div className="text-lg font-bold text-red-600">${remainingDebt.toFixed(2)}</div>
                     </div>
                     <div>
-                      <div className="text-gray-500">{t('Original', 'Original')}</div>
-                      <div className="text-lg font-semibold text-gray-700">${(card.originalBalance || 0).toFixed(2)}</div>
+                      <div className="text-gray-500">{isSynced ? t('Available', 'Disponible') : t('Original', 'Original')}</div>
+                      <div className="text-lg font-semibold text-gray-700">${(isSynced ? availableCredit : (card.originalBalance || 0)).toFixed(2)}</div>
                     </div>
                     <div>
-                      <div className="text-gray-500">{t('Paid Off', 'Pagado')}</div>
-                      <div className="text-lg font-semibold text-green-600">${totalPaid.toFixed(2)}</div>
+                      <div className="text-gray-500">{isSynced ? t('Credit Limit', 'Límite') : t('Paid Off', 'Pagado')}</div>
+                      <div className="text-lg font-semibold text-green-600">${(isSynced ? (card.creditLimit || 0) : totalPaid).toFixed(2)}</div>
                     </div>
                     <div>
-                      <div className="text-gray-500">{t('Min Payment', 'Pago Mín.')}</div>
-                      <div className="text-lg font-semibold text-gray-700">${(card.minPayment || 0).toFixed(2)}</div>
+                      <div className="text-gray-500">{isSynced ? t('Utilization', 'Utilización') : t('Min Payment', 'Pago Mín.')}</div>
+                      <div className="text-lg font-semibold text-gray-700">{isSynced ? `${utilizationPercent}%` : `$${(card.minPayment || 0).toFixed(2)}`}</div>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex gap-2 ml-4">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setEditingCard(card); }}
-                    className="px-3 py-1 text-sm text-indigo-600 hover:text-indigo-800"
-                  >
-                    {t('Edit', 'Editar')}
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDelete(card); }}
-                    className="px-3 py-1 text-sm text-red-600 hover:text-red-800"
-                  >
-                    {t('Delete', 'Eliminar')}
-                  </button>
-                </div>
+                {!isSynced && (
+                  <div className="flex gap-2 ml-4">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setEditingCard(card); }}
+                      className="px-3 py-1 text-sm text-indigo-600 hover:text-indigo-800"
+                    >
+                      {t('Edit', 'Editar')}
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDelete(card); }}
+                      className="px-3 py-1 text-sm text-red-600 hover:text-red-800"
+                    >
+                      {t('Delete', 'Eliminar')}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Progress Bar */}
               <div className="mb-3">
                 <div className="flex justify-between text-sm text-gray-600 mb-1">
-                  <span>{t('Payoff Progress', 'Progreso de Pago')}</span>
-                  <span className="font-semibold text-indigo-600">{payoffPercent}%</span>
+                  <span>{isSynced ? t('Available Credit', 'Crédito Disponible') : t('Payoff Progress', 'Progreso de Pago')}</span>
+                  <span className="font-semibold text-indigo-600">{isSynced ? `${Math.max(0, 100 - utilizationPercent)}%` : `${payoffPercent}%`}</span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
                   <div
-                    className="h-3 rounded-full bg-gradient-to-r from-green-500 to-green-600 transition-all"
-                    style={{ width: `${Math.min(100, payoffPercent)}%` }}
+                    className={`h-3 rounded-full transition-all ${isSynced ? 'bg-gradient-to-r from-blue-500 to-indigo-600' : 'bg-gradient-to-r from-green-500 to-green-600'}`}
+                    style={{ width: `${Math.min(100, isSynced ? Math.max(0, 100 - utilizationPercent) : payoffPercent)}%` }}
                   />
                 </div>
               </div>
@@ -159,14 +170,23 @@ export default function CreditCardList({ cards, loading, onUpdate, householdId }
                     <span className="font-medium">{t('Linked Bank', 'Banco Vinculado')}:</span> {card.linkedBankName}
                   </div>
                 )}
+                {isSynced && card.lastSyncedAt && (
+                  <div>
+                    <span className="font-medium">{t('Last Synced', 'Última Sincronización')}:</span> {new Date(card.lastSyncedAt).toLocaleString()}
+                  </div>
+                )}
               </div>
-              <p className="text-xs text-indigo-400 dark:text-indigo-500 mt-3">{t('Click card to view transactions & payments →', 'Clic para ver transacciones y pagos →')}</p>
+              <p className="text-xs text-indigo-400 dark:text-indigo-500 mt-3">
+                {isSynced
+                  ? t('Click card to view synced account activity →', 'Clic para ver actividad sincronizada →')
+                  : t('Click card to view transactions & payments →', 'Clic para ver transacciones y pagos →')}
+              </p>
             </div>
           );
         })}
       </div>
 
-      {editingCard && (
+      {editingCard && !editingCard.isSynced && (
         <EditCreditCardModal
           card={editingCard}
           onSave={handleSaveEdit}

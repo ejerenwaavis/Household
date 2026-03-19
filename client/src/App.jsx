@@ -15,6 +15,7 @@ import IncomePage from './pages/IncomePage';
 import ExpensesPage from './pages/ExpensesPage';
 import FixedExpensesPage from './pages/FixedExpensesPage';
 import GoalsPage from './pages/GoalsPage';
+import LiabilitiesPage from './pages/LiabilitiesPage';
 import CreditCardsPage from './pages/CreditCardsPage';
 import CardStatementsPage from './pages/CardStatementsPage';
 import DebtPaymentsPage from './pages/DebtPaymentsPage';
@@ -117,6 +118,7 @@ function App() {
                   <Route path="/expenses" element={<ExpensesPage />} />
                   <Route path="/fixed-expenses" element={<FixedExpensesPage />} />
                   <Route path="/goals" element={<GoalsPage />} />
+                  <Route path="/liabilities" element={<LiabilitiesPage />} />
                   <Route path="/credit-cards" element={<CreditCardsPage />} />
                   <Route path="/card-statements" element={<CardStatementsPage />} />
                   <Route path="/debt-payments" element={<DebtPaymentsPage />} />

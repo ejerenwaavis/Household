@@ -8,7 +8,27 @@ export default function FixedExpenseList({ householdId, byGroup = {}, total = 0,
   const { t, language } = useLanguage();
   const [editingExpense, setEditingExpense] = useState(null);
   const [markingPayment, setMarkingPayment] = useState(null);
+  const [reviewCandidates, setReviewCandidates] = useState([]);
+  const [reviewLoading, setReviewLoading] = useState(false);
   console.log('[FixedExpenseList] render byGroup:', Object.keys(byGroup), 'total:', total, 'loading:', loading, 'payments:', payments.length);
+
+  const fetchReviewCandidates = async () => {
+    if (!householdId || !currentMonth) return;
+    try {
+      setReviewLoading(true);
+      const res = await api.get(`/fixed-expense-payments/${householdId}/review-candidates?month=${currentMonth}`);
+      setReviewCandidates(res.data.candidates || []);
+    } catch (err) {
+      console.error('[FixedExpenseList] review candidates error', err);
+      setReviewCandidates([]);
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchReviewCandidates();
+  }, [householdId, currentMonth, payments.length]);
 
   const handleDelete = async (expense) => {
     const id = expense._id || expense.id;
@@ -110,6 +130,7 @@ export default function FixedExpenseList({ householdId, byGroup = {}, total = 0,
                 const paidAmount = expensePayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
                 const isPaid = paidAmount >= Number(e.amount);
                 const remaining = Math.max(0, Number(e.amount) - paidAmount);
+                const autoPaidPayment = expensePayments.find((payment) => payment.source === 'plaid_auto');
                 
                 console.log('[FixedExpenseList] expense:', displayName, { expenseId, totalPayments: payments.length, matchingPayments: expensePayments.length, paidAmount, expenseAmount: Number(e.amount), isPaid });
 
@@ -129,6 +150,11 @@ export default function FixedExpenseList({ householdId, byGroup = {}, total = 0,
                           {t('Frequency', 'Frecuencia')}: <span className="capitalize">{t(e.frequency, e.frequency === 'weekly' ? 'Semanal' : e.frequency === 'biweekly' ? 'Quincenal' : 'Mensual')}</span>
                           {e.dueDay && ` • ${t('Due', 'Vence')}: ${t('Day', 'Día')} ${e.dueDay}`}
                         </div>
+                        {autoPaidPayment && (
+                          <div className="text-xs text-green-600 dark:text-green-400 mt-1">
+                            {t('Auto-paid by bank transaction', 'Pagado automáticamente por transacción bancaria')}
+                          </div>
+                        )}
                         {paidAmount > 0 && !isPaid && (
                           <div className="text-xs text-orange-600 dark:text-orange-400 mt-1">
                             {t('Paid', 'Pagado')}: ${paidAmount.toFixed(2)} / ${Number(e.amount).toFixed(2)}
@@ -167,6 +193,50 @@ export default function FixedExpenseList({ householdId, byGroup = {}, total = 0,
             <div className="text-3xl font-bold text-red-600 dark:text-red-400">${total.toFixed(2)}</div>
           </div>
         </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-md border border-gray-100 dark:border-gray-700 mt-6">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('Review Possible Matches', 'Revisar posibles coincidencias')}</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">{t('Near matches from synced bank transactions that need confirmation.', 'Coincidencias cercanas de transacciones bancarias sincronizadas que requieren confirmación.')}</div>
+          </div>
+          <button onClick={fetchReviewCandidates} className="text-sm text-indigo-600 hover:text-indigo-700">{reviewLoading ? t('Loading…', 'Cargando…') : t('Refresh', 'Actualizar')}</button>
+        </div>
+
+        {reviewCandidates.length === 0 ? (
+          <div className="text-sm text-gray-500 dark:text-gray-400">{t('No review items right now.', 'No hay elementos para revisar ahora.')}</div>
+        ) : (
+          <div className="space-y-3">
+            {reviewCandidates.slice(0, 8).map((candidate) => (
+              <div key={`${candidate.fixedExpenseId}-${candidate.plaidTransactionId}`} className="flex items-center justify-between gap-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                <div>
+                  <div className="text-sm font-medium text-gray-900 dark:text-white">{candidate.fixedExpenseName}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    {candidate.transactionName} · ${Number(candidate.transactionAmount).toFixed(2)} · {t('Expected', 'Esperado')} ${Number(candidate.expectedAmount).toFixed(2)} · {candidate.confidence}%
+                  </div>
+                </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      await api.post(`/fixed-expense-payments/${householdId}/confirm-candidate`, {
+                        fixedExpenseId: candidate.fixedExpenseId,
+                        plaidTransactionId: candidate.plaidTransactionId,
+                      });
+                      refresh && refresh();
+                    } catch (err) {
+                      console.error('[FixedExpenseList] confirm candidate error', err);
+                      alert(err?.response?.data?.error || 'Failed to confirm candidate');
+                    }
+                  }}
+                  className="shrink-0 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                >
+                  {t('Confirm', 'Confirmar')}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="text-right mt-4">

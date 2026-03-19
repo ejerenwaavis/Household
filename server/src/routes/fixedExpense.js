@@ -55,7 +55,7 @@ router.get('/:householdId', authMiddleware, householdAuthMiddleware, async (req,
 router.post('/:householdId', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
   try {
     const { householdId } = req.params;
-    const { name, nameES, amount, group, frequency, dueDay } = req.body;
+    const { name, nameES, amount, merchantAliases, group, frequency, dueDay } = req.body;
     console.log('[fixedExpense POST] incoming', { householdId, user: req.user?.userId, body: req.body });
 
     if (!name || !amount) {
@@ -68,6 +68,7 @@ router.post('/:householdId', authMiddleware, householdAuthMiddleware, async (req
       name,
       nameES: nameES || '',
       amount: Number(amount),
+      merchantAliases: Array.isArray(merchantAliases) ? merchantAliases.filter(Boolean) : [],
       group: group || 'Other',
       frequency: frequency || 'monthly',
       dueDay: dueDay || 1,
@@ -96,6 +97,7 @@ router.patch('/:householdId/:id', authMiddleware, householdAuthMiddleware, async
     if (updates.name) expense.name = updates.name;
     if (updates.nameES) expense.nameES = updates.nameES;
     if (typeof updates.amount !== 'undefined') expense.amount = Number(updates.amount);
+    if (Array.isArray(updates.merchantAliases)) expense.merchantAliases = updates.merchantAliases.filter(Boolean);
     if (updates.group) expense.group = updates.group;
     if (updates.frequency) expense.frequency = updates.frequency;
     if (typeof updates.dueDay !== 'undefined') expense.dueDay = updates.dueDay;

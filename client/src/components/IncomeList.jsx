@@ -55,6 +55,7 @@ export default function IncomeList({ householdId, entries = [], members = [], lo
         <ul className="space-y-3">
           {entries.map((e, i) => {
             const key = e._id || e.id || i;
+            const isSynced = Boolean(e.isSynced);
             // Determine amount safely from possible shapes
             let amountVal = 0;
             if (typeof e.amount === 'number') amountVal = e.amount;
@@ -84,13 +85,22 @@ export default function IncomeList({ householdId, entries = [], members = [], lo
             return (
               <li key={key} className="flex justify-between items-center">
                 <div>
-                  <div className="text-sm font-medium text-gray-900 dark:text-white">{sourceText} • <span className="text-indigo-600 dark:text-indigo-400">{contributorText}</span></div>
+                  <div className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2 flex-wrap">
+                    <span>{sourceText} • <span className="text-indigo-600 dark:text-indigo-400">{contributorText}</span></span>
+                    {isSynced && <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">Synced</span>}
+                  </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">{e.description || ''} {dateText ? `• ${new Date(dateText).toLocaleString()}` : ''}</div>
                 </div>
                 <div className="flex items-center space-x-4">
                   <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">${Number(amountVal || 0).toFixed(2)}</div>
-                  <button onClick={()=>handleEdit(e)} className="text-sm text-indigo-600">{t('Edit', 'Editar')}</button>
-                  <button onClick={()=>handleDelete(e)} className="text-sm text-red-600">{t('Delete', 'Eliminar')}</button>
+                  {isSynced ? (
+                    <a href="/transactions/review" className="text-sm text-indigo-600">{t('Review', 'Revisar')}</a>
+                  ) : (
+                    <>
+                      <button onClick={()=>handleEdit(e)} className="text-sm text-indigo-600">{t('Edit', 'Editar')}</button>
+                      <button onClick={()=>handleDelete(e)} className="text-sm text-red-600">{t('Delete', 'Eliminar')}</button>
+                    </>
+                  )}
                 </div>
               </li>
             );
@@ -102,7 +112,7 @@ export default function IncomeList({ householdId, entries = [], members = [], lo
         <button onClick={() => { console.log('[IncomeList] refresh clicked'); refresh && refresh(); }} className="text-sm text-indigo-600">{t('Refresh', 'Actualizar')}</button>
       </div>
 
-      {editingEntry && (
+      {editingEntry && !editingEntry.isSynced && (
         <EditIncomeModal
           income={editingEntry}
           members={members}

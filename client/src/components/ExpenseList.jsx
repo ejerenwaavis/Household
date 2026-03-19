@@ -56,22 +56,38 @@ export default function ExpenseList({ householdId, entries = [], members = [], l
           {entries.map((e, i) => {
             const key = e._id || e.id || i;
             const amountVal = Number(e.amount) || 0;
+            const isSynced = e.source === 'plaid' || e.isSynced;
             // Use translated category if available and language is Spanish
             let categoryText = language === 'es' && e.category_es ? e.category_es : (e.category || 'Other');
             let descriptionText = language === 'es' && e.description_es ? e.description_es : (e.description || '');
             const dateText = e.date ? new Date(e.date).toLocaleString() : null;
-            const contributorText = e.contributorName || 'Unknown';
+            const contributorText = isSynced ? t('Bank Sync', 'Banco') : (e.contributorName || 'Unknown');
 
             return (
               <li key={key} className="flex justify-between items-center">
                 <div>
-                  <div className="text-sm font-medium text-gray-900 dark:text-white">{categoryText} • <span className="text-orange-600 dark:text-orange-400">{contributorText}</span></div>
+                  <div className="text-sm font-medium text-gray-900 dark:text-white">
+                    {categoryText} • <span className="text-orange-600 dark:text-orange-400">{contributorText}</span>
+                    {isSynced && (
+                      <span className="ml-2 inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                        {t('Synced', 'Sincronizado')}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">{descriptionText} {dateText ? `• ${dateText}` : ''}</div>
                 </div>
                 <div className="flex items-center space-x-4">
                   <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">${amountVal.toFixed(2)}</div>
-                  <button onClick={()=>handleEdit(e)} className="text-sm text-indigo-600">{t('Edit', 'Editar')}</button>
-                  <button onClick={()=>handleDelete(e)} className="text-sm text-red-600">{t('Delete', 'Eliminar')}</button>
+                  {isSynced ? (
+                    <a href="/transactions/review" className="text-sm text-indigo-600">
+                      {t('Review', 'Revisar')}
+                    </a>
+                  ) : (
+                    <>
+                      <button onClick={()=>handleEdit(e)} className="text-sm text-indigo-600">{t('Edit', 'Editar')}</button>
+                      <button onClick={()=>handleDelete(e)} className="text-sm text-red-600">{t('Delete', 'Eliminar')}</button>
+                    </>
+                  )}
                 </div>
               </li>
             );

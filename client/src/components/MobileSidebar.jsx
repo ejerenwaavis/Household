@@ -28,6 +28,7 @@ export default function MobileSidebar({ isOpen, onClose }) {
     { path: '/fixed-expenses', label: t('Fixed Expenses', 'Gastos Fijos'), icon: '✅', color: 'red' },
     { path: '/expenses', label: t('Variable Expenses', 'Gastos Variables'), icon: '🛒', color: 'orange' },
     { path: '/goals', label: t('Goals & Funds', 'Metas y Fondos'), icon: '🎯', color: 'teal' },
+    { path: '/liabilities', label: t('Liabilities', 'Pasivos'), icon: '🏠', color: 'orange' },
     { path: '/credit-cards', label: t('Credit Cards', 'Tarjetas de Crédito'), icon: '💳', color: 'pink' },
     { path: '/monthly-overview', label: t('Monthly Overview', 'Resumen Mensual'), icon: '📈', color: 'blue' },
     { path: '/finance-report', label: t('Finance Report', 'Informe Financiero'), icon: '📑', color: 'indigo' },

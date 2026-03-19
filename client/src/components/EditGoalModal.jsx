@@ -6,7 +6,7 @@ const TYPES = ['Emergency', 'Project', 'Investment', 'Other'];
 const typeLabel = (t, tp) =>
   t(tp, tp === 'Emergency' ? 'Emergencia' : tp === 'Project' ? 'Proyecto' : tp === 'Investment' ? 'Inversión' : 'Otro');
 
-export default function EditGoalModal({ goal, linkedAccounts = [], onSave, onClose }) {
+export default function EditGoalModal({ goal, linkedAccounts = [], fixedExpenses = [], onSave, onClose }) {
   const { t } = useLanguage();
   const [name, setName] = useState(goal?.name || '');
   const [type, setType] = useState(goal?.type || 'Other');
@@ -14,7 +14,10 @@ export default function EditGoalModal({ goal, linkedAccounts = [], onSave, onClo
   const [target, setTarget] = useState(goal?.target ?? 0);
   const [currentBalance, setCurrentBalance] = useState(goal?.currentBalance ?? 0);
   const [linkedAccountId, setLinkedAccountId] = useState(goal?.linkedAccountId || '');
+  const [linkedFixedExpenseId, setLinkedFixedExpenseId] = useState(goal?.linkedFixedExpenseId || '');
   const [loading, setLoading] = useState(false);
+
+  const isLiabilityTracked = Boolean(goal?.isLiabilityTracked);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -27,6 +30,7 @@ export default function EditGoalModal({ goal, linkedAccounts = [], onSave, onClo
         target: Number(target),
         currentBalance: Number(currentBalance),
         linkedAccountId: linkedAccountId || null,
+        linkedFixedExpenseId: linkedFixedExpenseId || null,
       });
     } finally {
       setLoading(false);
@@ -131,6 +135,33 @@ export default function EditGoalModal({ goal, linkedAccounts = [], onSave, onClo
               ) : null;
             })()}
           </div>
+
+          {isLiabilityTracked && (
+            <div>
+              <label className="block text-xs text-gray-500">
+                {t('Linked Fixed Expense', 'Gasto Fijo Vinculado')}{' '}
+                <span className="text-gray-400">({t('optional', 'opcional')})</span>
+              </label>
+              {fixedExpenses.length === 0 ? (
+                <p className="mt-1 text-xs text-gray-400 italic">
+                  {t('No fixed expenses available.', 'No hay gastos fijos disponibles.')}
+                </p>
+              ) : (
+                <select
+                  value={linkedFixedExpenseId}
+                  onChange={(e) => setLinkedFixedExpenseId(e.target.value)}
+                  className="mt-1 w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                >
+                  <option value="">{t('— No linked fixed expense —', '— Sin gasto fijo vinculado —')}</option>
+                  {fixedExpenses.map((expense) => (
+                    <option key={expense._id} value={expense._id}>
+                      {expense.name} · ${Number(expense.amount || 0).toFixed(2)}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
 
           <div className="flex gap-3 mt-6">
             <button

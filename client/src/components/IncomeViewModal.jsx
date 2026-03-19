@@ -58,6 +58,7 @@ export default function IncomeViewModal({ title, entries = [], members = [], hou
               {entries.map((e, i) => {
                 const key = e._id || e.id || i;
                 const amountVal = resolveAmount(e);
+                const isSynced = Boolean(e.isSynced);
                 const sourceText = e.source || (Array.isArray(e.dailyBreakdown) && e.dailyBreakdown[0]?.source) || 'Manual';
                 const dateText = e.date || (Array.isArray(e.dailyBreakdown) && e.dailyBreakdown[0]?.date) || null;
                 const contributorText = e.contributorName || 'Unknown';
@@ -65,8 +66,9 @@ export default function IncomeViewModal({ title, entries = [], members = [], hou
                 return (
                   <div key={key} className="flex justify-between items-center bg-gray-50 dark:bg-gray-700 p-4 rounded-lg border border-gray-100 dark:border-gray-600">
                     <div className="flex-1">
-                      <div className="text-sm font-medium text-gray-900 dark:text-white">
-                        {sourceText} • <span className="text-indigo-600 dark:text-indigo-400">{contributorText}</span>
+                      <div className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2 flex-wrap">
+                        <span>{sourceText} • <span className="text-indigo-600 dark:text-indigo-400">{contributorText}</span></span>
+                        {isSynced && <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">Synced</span>}
                       </div>
                       <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                         {e.description && `${e.description}`}
@@ -78,7 +80,7 @@ export default function IncomeViewModal({ title, entries = [], members = [], hou
                       <div className="text-lg font-semibold text-gray-900 dark:text-white tabular-nums">
                         ${Number(amountVal).toFixed(2)}
                       </div>
-                      {householdId && (
+                      {householdId && !isSynced && (
                         <button
                           onClick={() => handleDelete(e)}
                           className="text-red-400 hover:text-red-600 text-sm font-medium transition-colors"

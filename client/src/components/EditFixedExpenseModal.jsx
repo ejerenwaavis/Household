@@ -5,6 +5,7 @@ export default function EditFixedExpenseModal({ expense, onSave, onClose }){
   const { t } = useLanguage();
   const [name, setName] = useState(expense?.name || '');
   const [amount, setAmount] = useState(expense?.amount || 0);
+  const [merchantAliases, setMerchantAliases] = useState((expense?.merchantAliases || []).join(', '));
   const [group, setGroup] = useState(expense?.group || 'Other');
   const [frequency, setFrequency] = useState(expense?.frequency || 'monthly');
   const [dueDay, setDueDay] = useState(expense?.dueDay || 1);
@@ -19,6 +20,7 @@ export default function EditFixedExpenseModal({ expense, onSave, onClose }){
       const updates = {
         name,
         amount: Number(amount),
+        merchantAliases: merchantAliases.split(',').map((alias) => alias.trim()).filter(Boolean),
         group,
         frequency,
         dueDay: Number(dueDay),
@@ -52,6 +54,16 @@ export default function EditFixedExpenseModal({ expense, onSave, onClose }){
               step="0.01"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
+              className="mt-1 w-full p-2 border rounded-lg"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-500">{t('Merchant Aliases', 'Alias del comercio')}</label>
+            <input
+              type="text"
+              value={merchantAliases}
+              onChange={(e) => setMerchantAliases(e.target.value)}
               className="mt-1 w-full p-2 border rounded-lg"
             />
           </div>

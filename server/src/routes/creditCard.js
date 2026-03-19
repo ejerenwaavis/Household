@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { householdAuthMiddleware, authMiddleware } from '../middleware/auth.js';
 import CreditCard from '../models/CreditCard.js';
+import LinkedAccount from '../models/LinkedAccount.js';
 
 const router = Router();
 
@@ -62,14 +63,96 @@ router.post('/:householdId/seed', authMiddleware, householdAuthMiddleware, async
 router.get('/:householdId', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
   try {
     const { householdId } = req.params;
-    
-    const cards = await CreditCard.find({ householdId })
+
+    const manualCards = await CreditCard.find({ householdId })
       .sort({ createdAt: -1 });
-    
-    const totalDebt = cards.reduce((sum, card) => sum + card.currentBalance, 0);
-    const totalOriginal = cards.reduce((sum, card) => sum + card.originalBalance, 0);
-    const totalPaid = totalOriginal - totalDebt;
+    const assignedLinkedAccountIds = new Set(
+      manualCards.map((card) => card.linkedAccountId).filter(Boolean).map(String)
+    );
+
+    const linkedCreditAccounts = await LinkedAccount.find({
+      householdId,
+      isActive: true,
+      $or: [
+        { accountType: 'credit' },
+        { accountSubtype: 'credit card' },
+      ],
+    }).sort({ linkedAt: -1 });
+
+    const availableLinkedCreditAccounts = linkedCreditAccounts.filter(
+      (account) => !assignedLinkedAccountIds.has(String(account._id))
+    );
+
+    const syncedCards = availableLinkedCreditAccounts.map((account) => {
+      const currentBalance = Number(account.currentBalance) || 0;
+      const availableBalance = Number(account.availableBalance) || 0;
+      const creditLimit = Number(account.creditLimit) || currentBalance + availableBalance;
+      const utilizationPercent = creditLimit > 0 ? Math.round((currentBalance / creditLimit) * 100) : 0;
+
+      return {
+        _id: `linked-${account._id}`,
+        linkedAccountId: String(account._id),
+        cardName: account.accountOfficialName || account.accountName,
+        holder: 'Plaid Sync',
+        originalBalance: creditLimit,
+        currentBalance,
+        minPayment: 0,
+        plannedExtraPayment: 0,
+        interestRate: 0,
+        creditLimit,
+        availableBalance,
+        accountMask: account.accountMask,
+        accountSubtype: account.accountSubtype,
+        accountType: account.accountType,
+        linkedBankName: account.accountName,
+        lastSyncedAt: account.lastSyncedAt,
+        syncStatus: account.syncStatus,
+        isSynced: true,
+        sourceType: 'plaid',
+        payoffPercent: Math.max(0, 100 - utilizationPercent),
+        remaining: Math.max(0, availableBalance),
+        utilizationPercent,
+      };
+    });
+
+    const linkedAccountMap = new Map(linkedCreditAccounts.map((account) => [String(account._id), account]));
+
+    const manualCardsWithMeta = manualCards.map((card) => {
+      const linkedAccount = card.linkedAccountId ? linkedAccountMap.get(String(card.linkedAccountId)) : null;
+      const currentBalance = linkedAccount ? (Number(linkedAccount.currentBalance) || 0) : (Number(card.currentBalance) || 0);
+      const creditLimit = linkedAccount ? (Number(linkedAccount.creditLimit) || Number(card.creditLimit) || 0) : (Number(card.creditLimit) || 0);
+      const availableBalance = linkedAccount
+        ? (Number(linkedAccount.availableBalance) || Math.max(0, creditLimit - currentBalance))
+        : Math.max(0, creditLimit - currentBalance);
+
+      return {
+        ...card.toObject(),
+        currentBalance,
+        creditLimit,
+        availableBalance,
+        accountMask: linkedAccount?.accountMask,
+        accountSubtype: linkedAccount?.accountSubtype,
+        accountType: linkedAccount?.accountType,
+        linkedBankName: linkedAccount?.accountName || card.linkedBankName,
+        lastSyncedAt: linkedAccount?.lastSyncedAt,
+        syncStatus: linkedAccount?.syncStatus,
+        isSynced: Boolean(linkedAccount),
+        sourceType: linkedAccount ? 'manual-linked' : 'manual',
+        utilizationPercent: creditLimit > 0
+          ? Math.round((currentBalance / creditLimit) * 100)
+          : 0,
+      };
+    });
+
+    const cards = [...syncedCards, ...manualCardsWithMeta];
+
+    const totalDebt = cards.reduce((sum, card) => sum + (Number(card.currentBalance) || 0), 0);
+    const totalOriginal = cards.reduce((sum, card) => sum + (Number(card.originalBalance) || 0), 0);
+    const totalPaid = cards.reduce((sum, card) => sum + (Number(card.availableBalance) || Math.max(0, (Number(card.originalBalance) || 0) - (Number(card.currentBalance) || 0))), 0);
+    const totalCreditLimit = cards.reduce((sum, card) => sum + (Number(card.creditLimit) || 0), 0);
+    const totalAvailableCredit = cards.reduce((sum, card) => sum + (Number(card.availableBalance) || 0), 0);
     const overallProgress = totalOriginal > 0 ? Math.round((totalPaid / totalOriginal) * 100) : 0;
+    const overallUtilization = totalCreditLimit > 0 ? Math.round((totalDebt / totalCreditLimit) * 100) : 0;
     
     res.json({ 
       cards,
@@ -78,7 +161,12 @@ router.get('/:householdId', authMiddleware, householdAuthMiddleware, async (req,
         totalOriginal,
         totalPaid,
         overallProgress,
-        cardCount: cards.length
+        totalCreditLimit,
+        totalAvailableCredit,
+        overallUtilization,
+        cardCount: cards.length,
+        syncedCardCount: syncedCards.length,
+        manualCardCount: manualCardsWithMeta.length,
       }
     });
   } catch (error) {

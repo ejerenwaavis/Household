@@ -62,6 +62,7 @@ function TabButton({ active, onClick, children }) {
 // ─── Main component ──────────────────────────────────────────────────────────
 
 export default function CreditCardDetailModal({ card, householdId, onClose, onCardUpdated }) {
+  const isSyncedCard = card?.isSynced || card?.sourceType === 'plaid';
   const [tab, setTab] = useState('transactions');
   const [month, setMonth] = useState(currentYM());
   const [search, setSearch] = useState('');
@@ -89,6 +90,21 @@ export default function CreditCardDetailModal({ card, householdId, onClose, onCa
   const fetchTransactions = useCallback(async () => {
     setTxnLoading(true);
     try {
+      if (isSyncedCard && card.linkedAccountId) {
+        const res = await api.get(`/plaid/transactions?accountId=${card.linkedAccountId}&month=${month}&limit=500`);
+        const mapped = (res.data.transactions || []).map((txn) => ({
+          _id: txn._id,
+          date: txn.date ? String(txn.date).substring(0, 10) : '',
+          description: txn.merchant || txn.name || 'Bank transaction',
+          category: txn.userCategory || txn.primaryCategory || 'Other',
+          amount: Math.abs(Number(txn.amount) || 0),
+          type: Number(txn.amount) < 0 ? 'credit' : 'debit',
+          isSynced: true,
+        }));
+        setTransactions(mapped);
+        return;
+      }
+
       const res = await api.get(`/bank-transactions/${householdId}?sourceType=credit_card&creditCardId=${card._id}&month=${month}`);
       setTransactions(res.data.transactions || []);
     } catch {
@@ -96,12 +112,26 @@ export default function CreditCardDetailModal({ card, householdId, onClose, onCa
     } finally {
       setTxnLoading(false);
     }
-  }, [householdId, card._id, month]);
+  }, [householdId, card._id, card.linkedAccountId, isSyncedCard, month]);
 
   // ── Fetch payments ───────────────────────────────────────────────────────
   const fetchPayments = useCallback(async () => {
     setPayLoading(true);
     try {
+      if (isSyncedCard && card.linkedAccountId) {
+        const res = await api.get(`/plaid/transactions?accountId=${card.linkedAccountId}&month=${month}&limit=500`);
+        const paymentLike = (res.data.transactions || [])
+          .filter((txn) => Number(txn.amount) < 0)
+          .map((txn) => ({
+            _id: txn._id,
+            paymentDate: txn.date ? String(txn.date).substring(0, 10) : '',
+            amountPaid: Math.abs(Number(txn.amount) || 0),
+            notes: txn.merchant || txn.name || 'Account credit',
+          }));
+        setPayments(paymentLike);
+        return;
+      }
+
       const res = await api.get(`/debt-payments/${householdId}?cardId=${card._id}&month=${month}`);
       setPayments(res.data.payments || []);
     } catch {
@@ -109,7 +139,7 @@ export default function CreditCardDetailModal({ card, householdId, onClose, onCa
     } finally {
       setPayLoading(false);
     }
-  }, [householdId, card._id, month]);
+  }, [householdId, card._id, card.linkedAccountId, isSyncedCard, month]);
 
   useEffect(() => {
     fetchTransactions();
@@ -265,6 +295,7 @@ export default function CreditCardDetailModal({ card, householdId, onClose, onCa
               {card.interestRate > 0 && <span>APR: {card.interestRate}%</span>}
               {card.dueDay && <span>Due day: {card.dueDay}</span>}
               {card.linkedBankName && <span>Linked bank: {card.linkedBankName}</span>}
+              {isSyncedCard && card.accountMask && <span>Account: ••{card.accountMask}</span>}
             </div>
             {/* Progress bar */}
             <div className="mt-2 w-64">
@@ -306,9 +337,11 @@ export default function CreditCardDetailModal({ card, householdId, onClose, onCa
             <TabButton active={tab === 'payments'} onClick={() => setTab('payments')}>
               Payments {payments.length > 0 && `(${payments.length})`}
             </TabButton>
-            <TabButton active={tab === 'upload'} onClick={() => setTab('upload')}>
-              Upload
-            </TabButton>
+            {!isSyncedCard && (
+              <TabButton active={tab === 'upload'} onClick={() => setTab('upload')}>
+                Upload
+              </TabButton>
+            )}
           </div>
         </div>
 
@@ -336,7 +369,7 @@ export default function CreditCardDetailModal({ card, householdId, onClose, onCa
                 <div className="text-center py-12 text-gray-400">
                   <div className="text-4xl mb-3">📂</div>
                   <p className="text-sm">No transactions for {fmtMonth(month)}.</p>
-                  <p className="text-xs mt-1 text-gray-400">Upload a credit card statement on the Upload tab.</p>
+                  <p className="text-xs mt-1 text-gray-400">{isSyncedCard ? 'Transactions sync automatically from Plaid for this account.' : 'Upload a credit card statement on the Upload tab.'}</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto rounded-xl border border-gray-100 dark:border-gray-700">
@@ -366,16 +399,18 @@ export default function CreditCardDetailModal({ card, householdId, onClose, onCa
                             </span>
                           </td>
                           <td className="px-4 py-2 text-center">
-                            <button
-                              onClick={async () => {
-                                try {
-                                  await api.delete(`/bank-transactions/${householdId}/${txn._id}`);
-                                  setTransactions(prev => prev.filter(t => t._id !== txn._id));
-                                } catch { /* silent */ }
-                              }}
-                              className="text-gray-300 hover:text-red-500 transition-colors"
-                              title="Remove"
-                            >×</button>
+                            {!isSyncedCard && (
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await api.delete(`/bank-transactions/${householdId}/${txn._id}`);
+                                    setTransactions(prev => prev.filter(t => t._id !== txn._id));
+                                  } catch { /* silent */ }
+                                }}
+                                className="text-gray-300 hover:text-red-500 transition-colors"
+                                title="Remove"
+                              >×</button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -389,14 +424,16 @@ export default function CreditCardDetailModal({ card, householdId, onClose, onCa
           {/* ── Payments tab ────────────────────────────────────────────── */}
           {tab === 'payments' && (
             <div>
-              <PaymentSuggestionsWidget
-                householdId={householdId}
-                onConfirmed={() => { fetchPayments(); setSuggestionRefresh(r => r + 1); }}
-              />
+              {!isSyncedCard && (
+                <PaymentSuggestionsWidget
+                  householdId={householdId}
+                  onConfirmed={() => { fetchPayments(); setSuggestionRefresh(r => r + 1); }}
+                />
+              )}
 
               {payments.length > 0 && (
                 <div className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-                  Total paid: <span className="font-semibold text-green-600">{fmt(totalPaid)}</span> across {payments.length} payment{payments.length !== 1 ? 's' : ''}
+                  {isSyncedCard ? 'Total credits:' : 'Total paid:'} <span className="font-semibold text-green-600">{fmt(totalPaid)}</span> across {payments.length} {isSyncedCard ? 'credit' : 'payment'}{payments.length !== 1 ? 's' : ''}
                 </div>
               )}
 
@@ -407,8 +444,8 @@ export default function CreditCardDetailModal({ card, householdId, onClose, onCa
               ) : filteredPays.length === 0 ? (
                 <div className="text-center py-12 text-gray-400">
                   <div className="text-4xl mb-3">💸</div>
-                  <p className="text-sm">No payments recorded for {fmtMonth(month)}.</p>
-                  <p className="text-xs mt-1 text-gray-400">Upload a bank statement to auto-detect payments, or add one on the Debt Payments page.</p>
+                  <p className="text-sm">{isSyncedCard ? 'No credits or payments found' : 'No payments recorded'} for {fmtMonth(month)}.</p>
+                  <p className="text-xs mt-1 text-gray-400">{isSyncedCard ? 'Negative Plaid transactions show up here as payments, credits, or refunds.' : 'Upload a bank statement to auto-detect payments, or add one on the Debt Payments page.'}</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto rounded-xl border border-gray-100 dark:border-gray-700">
@@ -436,7 +473,7 @@ export default function CreditCardDetailModal({ card, householdId, onClose, onCa
           )}
 
           {/* ── Upload tab ──────────────────────────────────────────────── */}
-          {tab === 'upload' && (
+          {!isSyncedCard && tab === 'upload' && (
             <div>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
                 Upload your <strong>{card.cardName}</strong> statement (CSV or PDF). Transactions will be tagged to this card and used in the Finance Report.

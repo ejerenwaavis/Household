@@ -52,6 +52,11 @@ export default function CreditCardsPage() {
   return (
     <Layout>
       <div className="max-w-6xl mx-auto">
+        {(() => {
+          const hasSyncedCards = (summary?.syncedCardCount || 0) > 0;
+
+          return (
+            <>
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -112,17 +117,35 @@ export default function CreditCardsPage() {
                   <div className="text-2xl font-bold text-red-600 dark:text-red-400">${summary.totalDebt?.toFixed(2) || '0.00'}</div>
                 </div>
                 <div className="bg-white dark:bg-gray-750 rounded-xl p-4 shadow-md border border-gray-200 dark:border-gray-700">
-                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">{t('Original Balance', 'Balance Original')}</div>
-                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">${summary.totalOriginal?.toFixed(2) || '0.00'}</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                    {hasSyncedCards ? t('Available Credit', 'Crédito Disponible') : t('Original Balance', 'Balance Original')}
+                  </div>
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                    ${hasSyncedCards ? (summary.totalAvailableCredit?.toFixed(2) || '0.00') : (summary.totalOriginal?.toFixed(2) || '0.00')}
+                  </div>
                 </div>
                 <div className="bg-white dark:bg-gray-750 rounded-xl p-4 shadow-md border border-gray-200 dark:border-gray-700">
-                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">{t('Amount Paid', 'Pagado')}</div>
-                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">${summary.totalPaid?.toFixed(2) || '0.00'}</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                    {hasSyncedCards ? t('Credit Limit', 'Límite de Crédito') : t('Amount Paid', 'Pagado')}
+                  </div>
+                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                    ${hasSyncedCards ? (summary.totalCreditLimit?.toFixed(2) || '0.00') : (summary.totalPaid?.toFixed(2) || '0.00')}
+                  </div>
                 </div>
                 <div className="bg-white dark:bg-gray-750 rounded-xl p-4 shadow-md border border-gray-200 dark:border-gray-700">
-                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">{t('Progress', 'Progreso')}</div>
-                  <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{summary.overallProgress || 0}%</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                    {hasSyncedCards ? t('Utilization', 'Utilización') : t('Progress', 'Progreso')}
+                  </div>
+                  <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                    {hasSyncedCards ? (summary.overallUtilization || 0) : (summary.overallProgress || 0)}%
+                  </div>
                 </div>
+              </div>
+            )}
+
+            {hasSyncedCards && (
+              <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+                Synced Plaid credit accounts now appear here automatically. Manual credit cards can still be added for accounts not linked through Plaid.
               </div>
             )}
 
@@ -146,6 +169,9 @@ export default function CreditCardsPage() {
             />
           </>
         )}
+            </>
+          );
+        })()}
       </div>
     </Layout>
   );

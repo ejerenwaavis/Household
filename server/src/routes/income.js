@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { householdAuthMiddleware, authMiddleware } from '../middleware/auth.js';
 import Income from '../models/Income.js';
 import { translateText } from '../services/translationService.js';
+import { getUnifiedMonthlyIncome, getUnifiedIncomeByHousehold } from '../services/unifiedIncomeService.js';
 
 const router = Router({ mergeParams: true });
 
@@ -73,14 +74,13 @@ router.get('/:householdId/:month', authMiddleware, householdAuthMiddleware, asyn
     const { householdId, month } = req.params;
     const { lang = 'en' } = req.query; // Get language from query param
 
-    // Query documents by the stored month string (format YYYY-MM)
-    let incomes = await Income.find({ householdId, month }).sort({ createdAt: 1 });
+    let { income: incomes, weeklyTotals: weeks, total } = await getUnifiedMonthlyIncome(householdId, month);
 
     // Add translations if language is Spanish
     if (lang === 'es') {
       incomes = await Promise.all(
         incomes.map(async (income) => {
-          const doc = income.toObject();
+          const doc = typeof income.toObject === 'function' ? income.toObject() : { ...income };
           
           // Translate contributed name if it's not 'Unknown'
           if (doc.contributorName && doc.contributorName !== 'Unknown') {
@@ -105,17 +105,6 @@ router.get('/:householdId/:month', authMiddleware, householdAuthMiddleware, asyn
       );
     }
 
-    // Aggregate weekly totals using the `week` and `weeklyTotal` fields when present.
-    const weeks = [0, 0, 0, 0];
-    incomes.forEach((doc) => {
-      const w = Number(doc.week) || 1;
-      const idx = Math.min(3, Math.max(0, w - 1));
-      const wt = Number(doc.weeklyTotal) || 0;
-      weeks[idx] += wt;
-    });
-
-    const total = weeks.reduce((a, b) => a + b, 0);
-
     res.json({
       month,
       income: incomes,
@@ -134,18 +123,8 @@ router.get('/:householdId', authMiddleware, householdAuthMiddleware, async (req,
   try {
     const { householdId } = req.params;
 
-    const incomes = await Income.find({ householdId }).sort({ createdAt: -1 });
-
-    const total = incomes.reduce((sum, doc) => sum + (Number(doc.weeklyTotal) || 0), 0);
-
-    const byMonth = {};
-    incomes.forEach((doc) => {
-      const month = doc.month;
-      if (!byMonth[month]) byMonth[month] = 0;
-      byMonth[month] += Number(doc.weeklyTotal) || 0;
-    });
-
-    res.json({ incomes, total, byMonth });
+    const data = await getUnifiedIncomeByHousehold(householdId);
+    res.json(data);
   } catch (error) {
     console.error('[income GET all] error', error && (error.stack || error.message || error));
     next(error);

@@ -110,6 +110,9 @@ export default function Sidebar() {
             {navLink('/goals', t('Goals & Funds', 'Metas y Fondos'), 'teal',
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
             )}
+            {navLink('/liabilities', t('Liabilities', 'Pasivos'), 'amber',
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-2.21 0-4 1.343-4 3s1.79 3 4 3 4 1.343 4 3-1.79 3-4 3m0-15V3m0 5v13m9-9a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            )}
 
             <Divider />
 

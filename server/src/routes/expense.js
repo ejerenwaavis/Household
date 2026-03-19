@@ -3,6 +3,10 @@ import { householdAuthMiddleware, authMiddleware } from '../middleware/auth.js';
 import Expense from '../models/Expense.js';
 import Household from '../models/Household.js';
 import { translateText } from '../services/translationService.js';
+import {
+  getUnifiedMonthlyVariableExpenses,
+  getUnifiedVariableExpensesByHousehold,
+} from '../services/unifiedExpenseService.js';
 
 const router = Router({ mergeParams: true });
 
@@ -73,37 +77,28 @@ router.get('/:householdId/:month', authMiddleware, householdAuthMiddleware, asyn
   try {
     const { householdId, month } = req.params;
     const { lang = 'en' } = req.query; // Get language from query param
-    
-    const [year, monthNum] = month.split('-').map(Number);
-    
-    const monthStart = new Date(year, monthNum - 1, 1);
-    const monthEnd = new Date(year, monthNum, 0);
 
-    let expenses = await Expense.find({
-      householdId,
-      date: { $gte: monthStart, $lte: monthEnd },
-    }).sort({ date: -1 });
+    let { expenses, byCategory, total } = await getUnifiedMonthlyVariableExpenses(householdId, month);
 
     // Add translations if language is Spanish
     if (lang === 'es') {
       expenses = await Promise.all(
         expenses.map(async (expense) => {
-          const doc = expense.toObject();
+          const doc = typeof expense.toObject === 'function' ? expense.toObject() : { ...expense };
           doc.description_es = await translateText(doc.description, 'es', 'en');
           doc.category_es = await translateText(doc.category, 'es', 'en');
           return doc;
         })
       );
+
+      const translatedCategoryTotals = {};
+      expenses.forEach((exp) => {
+        const catName = exp.category_es || exp.category;
+        translatedCategoryTotals[catName] = (translatedCategoryTotals[catName] || 0) + Number(exp.amount || 0);
+      });
+      byCategory = translatedCategoryTotals;
+      total = Object.values(translatedCategoryTotals).reduce((sum, val) => sum + val, 0);
     }
-
-    // Calculate category totals (use translated names if available)
-    const byCategory = {};
-    expenses.forEach((exp) => {
-      const catName = lang === 'es' && exp.category_es ? exp.category_es : exp.category;
-      byCategory[catName] = (byCategory[catName] || 0) + exp.amount;
-    });
-
-    const total = Object.values(byCategory).reduce((sum, val) => sum + val, 0);
 
     res.json({
       month,
@@ -121,18 +116,8 @@ router.get('/:householdId', authMiddleware, householdAuthMiddleware, async (req,
   try {
     const { householdId } = req.params;
 
-    const expenses = await Expense.find({ householdId }).sort({ date: -1 });
-
-    const total = expenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
-
-    const byMonth = {};
-    expenses.forEach((exp) => {
-      const month = exp.month;
-      if (!byMonth[month]) byMonth[month] = 0;
-      byMonth[month] += Number(exp.amount) || 0;
-    });
-
-    res.json({ expenses, total, byMonth });
+    const data = await getUnifiedVariableExpensesByHousehold(householdId);
+    res.json(data);
   } catch (error) {
     console.error('[expense GET all] error', error && (error.stack || error.message || error));
     next(error);

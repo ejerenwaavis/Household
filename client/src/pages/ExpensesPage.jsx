@@ -14,6 +14,7 @@ export default function ExpensesPage(){
   const [categoryTotals, setCategoryTotals] = useState({});
   const [monthTotal, setMonthTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [linkedAccounts, setLinkedAccounts] = useState([]);
 
   const fetchCurrentMonth = async () => {
     if (!user?.householdId) return;
@@ -44,7 +45,17 @@ export default function ExpensesPage(){
     }
   };
 
-  useEffect(()=>{ fetchCurrentMonth(); fetchMembers(); }, [user, language]);
+  const fetchLinkedAccounts = async () => {
+    try {
+      const res = await api.get('/plaid/linked-accounts');
+      setLinkedAccounts(res.data.linkedAccounts || []);
+    } catch (err) {
+      console.error('[ExpensesPage] fetch linked accounts error:', err);
+      setLinkedAccounts([]);
+    }
+  };
+
+  useEffect(()=>{ fetchCurrentMonth(); fetchMembers(); fetchLinkedAccounts(); }, [user, language]);
 
   const handleCreated = (newEntry) => {
     // Prepend to list for instant feedback
@@ -76,17 +87,19 @@ export default function ExpensesPage(){
         </div>
 
         {/* Link bank account prompt */}
-        <a
-          href="/linked-accounts"
-          className="flex items-center gap-3 mb-6 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors group"
-        >
-          <span className="text-2xl">🏦</span>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">Link your bank account</p>
-            <p className="text-xs text-blue-600 dark:text-blue-400">Automatically sync transactions instead of entering them manually</p>
-          </div>
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-500 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-        </a>
+        {linkedAccounts.length === 0 && (
+          <a
+            href="/linked-accounts"
+            className="flex items-center gap-3 mb-6 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors group"
+          >
+            <span className="text-2xl">🏦</span>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">Link your bank account</p>
+              <p className="text-xs text-blue-600 dark:text-blue-400">Automatically sync transactions instead of entering them manually</p>
+            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-500 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+          </a>
+        )}
 
         <ExpenseForm householdId={user?.householdId} onCreated={handleCreated} />
 

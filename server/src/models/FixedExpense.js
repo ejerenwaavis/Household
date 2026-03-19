@@ -6,6 +6,7 @@ const fixedExpenseSchema = new mongoose.Schema({
   name: { type: String, required: true },
   nameES: { type: String, default: '' },
   amount: { type: Number, required: true, min: 0 },
+  merchantAliases: [{ type: String }],
   group: { type: String, enum: ['Housing', 'Utilities', 'Insurance', 'Auto', 'Family', 'Food', 'Savings', 'Debt', 'Bills', 'Entertainment', 'Other'], default: 'Other' },
   frequency: { type: String, enum: ['monthly', 'weekly', 'biweekly'], default: 'monthly' },
   dueDay: { type: Number, min: 1, max: 31, default: 1 },

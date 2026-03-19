@@ -12,6 +12,8 @@ const goalSchema = new mongoose.Schema({
   // Linked bank account (Plaid)
   linkedAccountId: { type: String, default: null },   // LinkedAccount._id
   linkedAccountName: { type: String, default: null },  // cached display label
+  linkedFixedExpenseId: { type: String, default: null },
+  linkedFixedExpenseName: { type: String, default: null },
   createdAt: { type: Date, default: Date.now },
 });
 

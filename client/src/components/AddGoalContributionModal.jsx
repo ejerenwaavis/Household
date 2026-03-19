@@ -8,6 +8,7 @@ const methodLabel = (t, m) =>
 
 export default function AddGoalContributionModal({ goal, onSave, onClose }) {
   const { t } = useLanguage();
+  const isLiabilityTracked = Boolean(goal?.isLiabilityTracked);
   const [amount, setAmount] = useState('');
   const [contributionDate, setContributionDate] = useState(new Date().toISOString().split('T')[0]);
   const [method, setMethod] = useState('bank');
@@ -38,7 +39,7 @@ export default function AddGoalContributionModal({ goal, onSave, onClose }) {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-2xl max-w-md w-full">
         <h2 className="text-xl font-bold mb-4 dark:text-white">
-          {t('Add Funds to: ', 'Agregar Fondos a: ')}
+          {isLiabilityTracked ? t('Record Payment for: ', 'Registrar Pago para: ') : t('Add Funds to: ', 'Agregar Fondos a: ')}
           <span className="text-teal-600 dark:text-teal-400">{goal?.name}</span>
         </h2>
 
@@ -82,7 +83,7 @@ export default function AddGoalContributionModal({ goal, onSave, onClose }) {
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder={t('e.g., Monthly contribution', 'p.ej., Aportación mensual')}
+              placeholder={isLiabilityTracked ? t('e.g., Monthly mortgage payment', 'p.ej., Pago mensual de hipoteca') : t('e.g., Monthly contribution', 'p.ej., Aportación mensual')}
               rows="2"
               className="mt-1 w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm"
             />
@@ -101,7 +102,7 @@ export default function AddGoalContributionModal({ goal, onSave, onClose }) {
               disabled={loading}
               className="flex-1 px-4 py-2 bg-teal-600 dark:bg-teal-700 text-white rounded-lg hover:bg-teal-700 dark:hover:bg-teal-800 disabled:opacity-60 transition-colors"
             >
-              {loading ? t('Saving...', 'Guardando...') : t('Add', 'Agregar')}
+              {loading ? t('Saving...', 'Guardando...') : isLiabilityTracked ? t('Record Payment', 'Registrar Pago') : t('Add', 'Agregar')}
             </button>
           </div>
         </form>

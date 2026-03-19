@@ -72,10 +72,21 @@ export const setDefaultAccount = async (accountId, authToken) => {
   }
 };
 
+export const updateLinkedAccount = async (accountId, updates, authToken) => {
+  try {
+    const response = await api.patch(`${API_BASE}/linked-accounts/${accountId}`, updates);
+    return response.data;
+  } catch (error) {
+    console.error('[PlaidService] Error updating linked account:', error);
+    throw error;
+  }
+};
+
 export default {
   getLinkedAccounts,
   getAccountBalance,
   unlinkAccount,
   getSyncStatus,
-  setDefaultAccount
+  setDefaultAccount,
+  updateLinkedAccount
 };

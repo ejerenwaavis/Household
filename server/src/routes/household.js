@@ -4,8 +4,9 @@ import Household from '../models/Household.js';
 import HouseholdInvite from '../models/HouseholdInvite.js';
 import User from '../models/User.js';
 import Income from '../models/Income.js';
-import Expense from '../models/Expense.js';
 import { sendInviteEmail, sendWelcomeEmail } from '../services/emailService.js';
+import { getUnifiedMonthlyVariableExpenses } from '../services/unifiedExpenseService.js';
+import { getUnifiedMonthlyIncome } from '../services/unifiedIncomeService.js';
 
 const router = Router();
 
@@ -79,24 +80,10 @@ router.get('/:householdId/summary', authMiddleware, householdAuthMiddleware, asy
   try {
     const { householdId } = req.params;
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     const monthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
 
-    // Get income totals - query by month string instead of date range
-    const incomeData = await Income.aggregate([
-      { $match: { householdId, month: monthStr } },
-      { $group: { _id: null, total: { $sum: '$weeklyTotal' } } },
-    ]);
-
-    // Get expense totals - query by date range in dailyBreakdown
-    const expenseData = await Expense.aggregate([
-      { $match: { householdId, createdAt: { $gte: monthStart, $lte: monthEnd } } },
-      { $group: { _id: null, total: { $sum: '$amount' } } },
-    ]);
-
-    const totalIncome = incomeData[0]?.total || 0;
-    const totalExpenses = expenseData[0]?.total || 0;
+    const { total: totalIncome } = await getUnifiedMonthlyIncome(householdId, monthStr);
+    const { total: totalExpenses } = await getUnifiedMonthlyVariableExpenses(householdId, monthStr);
 
     res.json({
       householdId,

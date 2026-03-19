@@ -6,6 +6,7 @@ export default function FixedExpenseForm({ householdId, onCreated }){
   const { t } = useLanguage();
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
+  const [merchantAliases, setMerchantAliases] = useState('');
   const [group, setGroup] = useState('Other');
   const [frequency, setFrequency] = useState('monthly');
   const [dueDay, setDueDay] = useState('1');
@@ -17,6 +18,7 @@ export default function FixedExpenseForm({ householdId, onCreated }){
   const reset = () => { 
     setName('');
     setAmount('');
+    setMerchantAliases('');
     setGroup('Other');
     setFrequency('monthly');
     setDueDay('1');
@@ -34,6 +36,7 @@ export default function FixedExpenseForm({ householdId, onCreated }){
       const payload = {
         name,
         amount: Number(amount),
+        merchantAliases: merchantAliases.split(',').map((alias) => alias.trim()).filter(Boolean),
         group,
         frequency,
         dueDay: Number(dueDay),
@@ -109,6 +112,17 @@ export default function FixedExpenseForm({ householdId, onCreated }){
             className="mt-1 w-full p-2 border rounded-lg" 
           />
         </div>
+      </div>
+
+      <div className="mt-4">
+        <label className="block text-xs text-gray-500">{t('Merchant Aliases', 'Alias del comercio')}</label>
+        <input
+          value={merchantAliases}
+          onChange={(e) => setMerchantAliases(e.target.value)}
+          placeholder={t('e.g., AT&T, ATT, SBC', 'p.ej., AT&T, ATT, SBC')}
+          className="mt-1 w-full p-2 border rounded-lg"
+        />
+        <p className="mt-1 text-xs text-gray-400">{t('Comma-separated names used to auto-match bank transactions.', 'Nombres separados por comas para vincular transacciones bancarias automáticamente.')}</p>
       </div>
 
       {error && <div className="text-sm text-red-500 mt-3">{error}</div>}
