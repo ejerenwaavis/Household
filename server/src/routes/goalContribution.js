@@ -2,8 +2,23 @@ import { Router } from 'express';
 import { householdAuthMiddleware, authMiddleware } from '../middleware/auth.js';
 import GoalContribution from '../models/GoalContribution.js';
 import Goal from '../models/Goal.js';
+import LinkedAccount from '../models/LinkedAccount.js';
 
 const router = Router({ mergeParams: true });
+
+function isLiabilityAccount(account) {
+  const type = String(account?.accountType || '').toLowerCase();
+  const subtype = String(account?.accountSubtype || '').toLowerCase();
+  return type === 'loan' || subtype.includes('mortgage') || subtype.includes('loan');
+}
+
+async function getGoalTrackingMeta(goal) {
+  if (!goal?.linkedAccountId) return { isLiabilityTracked: false };
+  const account = await LinkedAccount.findById(goal.linkedAccountId)
+    .select('accountType accountSubtype')
+    .lean();
+  return { isLiabilityTracked: isLiabilityAccount(account) };
+}
 
 // GET contributions for a goal
 router.get('/:householdId/:goalId', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
@@ -40,6 +55,7 @@ router.post('/:householdId/:goalId', authMiddleware, householdAuthMiddleware, as
     // Verify goal exists and belongs to household
     const goal = await Goal.findOne({ _id: goalId, householdId });
     if (!goal) return res.status(404).json({ error: 'Goal not found' });
+    const { isLiabilityTracked } = await getGoalTrackingMeta(goal);
 
     // Create contribution
     const contribution = await GoalContribution.create({
@@ -51,14 +67,21 @@ router.post('/:householdId/:goalId', authMiddleware, householdAuthMiddleware, as
       notes: notes || '',
     });
 
-    // Update goal's currentBalance
-    goal.currentBalance += Number(amount);
+    // Savings go up when funded; liabilities go down when paid.
+    if (isLiabilityTracked) {
+      goal.currentBalance = Math.max(0, Number(goal.currentBalance || 0) - Number(amount));
+    } else {
+      goal.currentBalance += Number(amount);
+    }
     await goal.save();
 
     // Recalculate progressPercent
     const doc = goal.toObject();
+    doc.isLiabilityTracked = isLiabilityTracked;
     doc.progressPercent = doc.target > 0
-      ? Math.min(100, Math.round((doc.currentBalance / doc.target) * 100))
+      ? isLiabilityTracked
+        ? Math.max(0, Math.min(100, Math.round(((doc.target - doc.currentBalance) / doc.target) * 100)))
+        : Math.min(100, Math.round((doc.currentBalance / doc.target) * 100))
       : null;
 
     console.log('[goalContribution POST] created', { id: contribution._id, newBalance: goal.currentBalance });
@@ -84,7 +107,12 @@ router.delete('/:householdId/:goalId/:id', authMiddleware, householdAuthMiddlewa
     // Update goal's currentBalance
     const goal = await Goal.findOne({ _id: goalId, householdId });
     if (goal) {
-      goal.currentBalance = Math.max(0, goal.currentBalance - amount);
+      const { isLiabilityTracked } = await getGoalTrackingMeta(goal);
+      if (isLiabilityTracked) {
+        goal.currentBalance += amount;
+      } else {
+        goal.currentBalance = Math.max(0, goal.currentBalance - amount);
+      }
       await goal.save();
     }
 

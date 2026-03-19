@@ -13,6 +13,7 @@ export default function MonthlyOverviewPage() {
   const navigate = useNavigate();
   const [monthlyData, setMonthlyData] = useState([]);
   const [incomeSplits, setIncomeSplits] = useState([]);
+  const [liabilityReport, setLiabilityReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(null);
 
@@ -22,18 +23,27 @@ export default function MonthlyOverviewPage() {
     try {
       setLoading(true);
       
-      // Fetch all income and expenses
-      const [incomeRes, expensesRes, splitsRes] = await Promise.all([
+      // Fetch all income, unified variable expenses, fixed expenses, and splits
+      const [incomeRes, variableRes, fixedRes, splitsRes, liabilityRes] = await Promise.all([
         api.get(`/income/${user.householdId}`),
+        api.get(`/expenses/${user.householdId}`),
         api.get(`/fixed-expenses/${user.householdId}`),
-        api.get(`/income-splits/${user.householdId}`).catch(() => ({ data: { splits: [] } }))
+        api.get(`/income-splits/${user.householdId}`).catch(() => ({ data: { splits: [] } })),
+        api.get(`/goals/${user.householdId}/liability-report`).catch(() => ({ data: { monthlyTotals: {}, liabilities: [], summary: null } })),
       ]);
       
       const incomes = incomeRes.data.incomes || [];
-      const expenses = expensesRes.data.expenses || [];
+      const variableExpenses = variableRes.data.expenses || [];
+      const fixedExpenses = fixedRes.data.expenses || [];
       const splits = splitsRes.data.splits || [];
+      const liabilityMonthlyTotals = liabilityRes.data.monthlyTotals || {};
       
       setIncomeSplits(splits);
+      setLiabilityReport({
+        liabilities: liabilityRes.data.liabilities || [],
+        summary: liabilityRes.data.summary || null,
+        monthlyTotals: liabilityMonthlyTotals,
+      });
       
       // Group by month
       const monthMap = {};
@@ -48,9 +58,15 @@ export default function MonthlyOverviewPage() {
           monthMap[month] = {
             month,
             totalIncome: 0,
+            fixedExpenseTotal: 0,
+            variableExpenseTotal: 0,
+            liabilityPaidTotal: 0,
+            liabilityPlannedTotal: 0,
+            liabilityRemainingTotal: 0,
             totalExpenses: 0,
             incomeItems: [],
-            expenseItems: []
+            fixedExpenseItems: [],
+            variableItems: [],
           };
         }
         // Income model stores amount as `weeklyTotal`; fall back to `amount` for older records
@@ -59,12 +75,73 @@ export default function MonthlyOverviewPage() {
         monthMap[month].incomeItems.push({ ...income, amount: incomeAmount });
       });
 
-      // Fixed expenses have no month field — add the total of all fixed expenses
-      // to every month that has income data (they are recurring monthly costs)
-      const totalFixedExpenses = expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-      Object.keys(monthMap).forEach(month => {
-        monthMap[month].totalExpenses = totalFixedExpenses;
-        monthMap[month].expenseItems = expenses;
+      // Add unified variable expense data by month.
+      variableExpenses.forEach((expense) => {
+        const month = expense.month || (expense.date ? String(expense.date).substring(0, 7) : null);
+        if (!month || !/^\d{4}-\d{2}$/.test(month)) return;
+        if (!monthMap[month]) {
+          monthMap[month] = {
+            month,
+            totalIncome: 0,
+            fixedExpenseTotal: 0,
+            variableExpenseTotal: 0,
+            liabilityPaidTotal: 0,
+            liabilityPlannedTotal: 0,
+            liabilityRemainingTotal: 0,
+            totalExpenses: 0,
+            incomeItems: [],
+            fixedExpenseItems: [],
+            variableItems: [],
+          };
+        }
+        const amount = Number(expense.amount) || 0;
+        monthMap[month].variableExpenseTotal += amount;
+        monthMap[month].variableItems.push(expense);
+      });
+
+      // Fixed expenses recur monthly, so apply them to any month with activity.
+      // If the household only has fixed expenses, seed the current month so the page is never blank.
+      const totalFixedExpenses = fixedExpenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+      const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+      if (totalFixedExpenses > 0 && !monthMap[currentMonth]) {
+        monthMap[currentMonth] = {
+          month: currentMonth,
+          totalIncome: 0,
+          fixedExpenseTotal: 0,
+          variableExpenseTotal: 0,
+          liabilityPaidTotal: 0,
+          liabilityPlannedTotal: 0,
+          liabilityRemainingTotal: 0,
+          totalExpenses: 0,
+          incomeItems: [],
+          fixedExpenseItems: [],
+          variableItems: [],
+        };
+      }
+      Object.entries(liabilityMonthlyTotals).forEach(([month, totals]) => {
+        if (!monthMap[month]) {
+          monthMap[month] = {
+            month,
+            totalIncome: 0,
+            fixedExpenseTotal: 0,
+            variableExpenseTotal: 0,
+            liabilityPaidTotal: 0,
+            liabilityPlannedTotal: 0,
+            liabilityRemainingTotal: 0,
+            totalExpenses: 0,
+            incomeItems: [],
+            fixedExpenseItems: [],
+            variableItems: [],
+          };
+        }
+        monthMap[month].liabilityPaidTotal = Number(totals.paid) || 0;
+        monthMap[month].liabilityPlannedTotal = Number(totals.planned) || 0;
+        monthMap[month].liabilityRemainingTotal = Number(totals.remainingDue) || 0;
+      });
+      Object.keys(monthMap).forEach((month) => {
+        monthMap[month].fixedExpenseTotal = totalFixedExpenses;
+        monthMap[month].totalExpenses = totalFixedExpenses + monthMap[month].variableExpenseTotal;
+        monthMap[month].fixedExpenseItems = fixedExpenses;
       });
       
       // Calculate remaining and weekly allowance
@@ -198,7 +275,7 @@ export default function MonthlyOverviewPage() {
                     {t('Total Income', 'Ingreso Total')}
                   </th>
                   <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700 dark:text-gray-300">
-                    {t('Fixed Expenses', 'Gastos Fijos')}
+                    {t('Total Expenses', 'Gastos Totales')}
                   </th>
                   <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700 dark:text-gray-300">
                     {t('Remaining', 'Restante')}
@@ -282,7 +359,7 @@ export default function MonthlyOverviewPage() {
                 <div className="p-4 space-y-4">
 
                   {/* ── Summary strip ─────────────────────────────────── */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                     <div className="bg-green-50 dark:bg-green-900/25 rounded-xl px-3 py-2.5">
                       <div className="text-xs font-semibold text-green-600 dark:text-green-400 uppercase tracking-wide">{t('Income', 'Ingresos')}</div>
                       <div className="text-xl font-bold text-green-700 dark:text-green-300">${(data.totalIncome || 0).toFixed(2)}</div>
@@ -290,8 +367,13 @@ export default function MonthlyOverviewPage() {
                     </div>
                     <div className="bg-red-50 dark:bg-red-900/25 rounded-xl px-3 py-2.5">
                       <div className="text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide">{t('Fixed Exp.', 'Gastos Fijos')}</div>
-                      <div className="text-xl font-bold text-red-700 dark:text-red-300">${(data.totalExpenses || 0).toFixed(2)}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">{data.expenseItems.length} {data.expenseItems.length === 1 ? t('item', 'ítem') : t('items', 'ítems')}</div>
+                      <div className="text-xl font-bold text-red-700 dark:text-red-300">${(data.fixedExpenseTotal || 0).toFixed(2)}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">{data.fixedExpenseItems.length} {data.fixedExpenseItems.length === 1 ? t('item', 'ítem') : t('items', 'ítems')}</div>
+                    </div>
+                    <div className="bg-orange-50 dark:bg-orange-900/25 rounded-xl px-3 py-2.5">
+                      <div className="text-xs font-semibold text-orange-600 dark:text-orange-400 uppercase tracking-wide">{t('Variable Exp.', 'Gastos Variables')}</div>
+                      <div className="text-xl font-bold text-orange-700 dark:text-orange-300">${(data.variableExpenseTotal || 0).toFixed(2)}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">{data.variableItems.length} {data.variableItems.length === 1 ? t('item', 'ítem') : t('items', 'ítems')}</div>
                     </div>
                     <div className="bg-blue-50 dark:bg-blue-900/25 rounded-xl px-3 py-2.5">
                       <div className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wide">{t('Remaining', 'Restante')}</div>
@@ -305,7 +387,62 @@ export default function MonthlyOverviewPage() {
                       <div className="text-xl font-bold text-purple-700 dark:text-purple-300">${(data.weeklyAllowance || 0).toFixed(2)}</div>
                       <div className="text-xs text-gray-400 mt-0.5">÷ 4.33 {t('weeks', 'semanas')}</div>
                     </div>
+                    <div className="bg-amber-50 dark:bg-amber-900/25 rounded-xl px-3 py-2.5">
+                      <div className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">{t('Liability Paid', 'Pasivos Pagados')}</div>
+                      <div className="text-xl font-bold text-amber-700 dark:text-amber-300">${(data.liabilityPaidTotal || 0).toFixed(2)}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">{t('planned', 'planeado')}: ${(data.liabilityPlannedTotal || 0).toFixed(2)}</div>
+                    </div>
                   </div>
+
+                  {liabilityReport?.liabilities?.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                        <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">{t('Liability Snapshot', 'Resumen de Pasivos')}</span>
+                      </div>
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-3">
+                        <div className="rounded-xl border border-amber-100 bg-amber-50/70 px-3 py-2.5">
+                          <div className="text-xs text-amber-700 uppercase tracking-wide">{t('Remaining Balance', 'Saldo Restante')}</div>
+                          <div className="text-lg font-bold text-amber-800">${Number(liabilityReport.summary?.totalRemainingBalance || 0).toFixed(2)}</div>
+                        </div>
+                        <div className="rounded-xl border border-green-100 bg-green-50/70 px-3 py-2.5">
+                          <div className="text-xs text-green-700 uppercase tracking-wide">{t('Paid Down', 'Pagado')}</div>
+                          <div className="text-lg font-bold text-green-800">${Number(liabilityReport.summary?.totalPaidDown || 0).toFixed(2)}</div>
+                        </div>
+                        <div className="rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2.5">
+                          <div className="text-xs text-blue-700 uppercase tracking-wide">{t('Payoff Progress', 'Progreso de Pago')}</div>
+                          <div className="text-lg font-bold text-blue-800">{Number(liabilityReport.summary?.overallPayoffPercent || 0)}%</div>
+                        </div>
+                        <div className="rounded-xl border border-red-100 bg-red-50/70 px-3 py-2.5">
+                          <div className="text-xs text-red-700 uppercase tracking-wide">{t('Still Due This Month', 'Aún Debe Este Mes')}</div>
+                          <div className="text-lg font-bold text-red-800">${Number(data.liabilityRemainingTotal || 0).toFixed(2)}</div>
+                        </div>
+                      </div>
+
+                      <div className="border border-gray-200 dark:border-gray-600 rounded-xl overflow-hidden">
+                        <table className="w-full text-xs">
+                          <thead className="bg-gray-50 dark:bg-gray-700">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400">{t('Liability', 'Pasivo')}</th>
+                              <th className="px-3 py-2 text-right font-semibold text-gray-500 dark:text-gray-400">{t('Remaining', 'Restante')}</th>
+                              <th className="px-3 py-2 text-right font-semibold text-gray-500 dark:text-gray-400">{t('Paid This Month', 'Pagado Este Mes')}</th>
+                              <th className="px-3 py-2 text-right font-semibold text-gray-500 dark:text-gray-400">{t('Est. Payoff', 'Pago Estimado')}</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                            {liabilityReport.liabilities.map((liability) => (
+                              <tr key={liability._id} className="hover:bg-amber-50/40 dark:hover:bg-amber-900/10">
+                                <td className="px-3 py-1.5 font-medium text-gray-700 dark:text-gray-300">{liability.name}</td>
+                                <td className="px-3 py-1.5 text-right text-amber-700 dark:text-amber-300 font-semibold">${Number(liability.payoffMetrics?.remainingBalance || 0).toFixed(2)}</td>
+                                <td className="px-3 py-1.5 text-right text-green-700 dark:text-green-300 font-semibold">${Number(liability.payoffMetrics?.thisMonthPaid || 0).toFixed(2)}</td>
+                                <td className="px-3 py-1.5 text-right text-purple-700 dark:text-purple-300 font-semibold">{liability.payoffMetrics?.estimatedPayoffDate ? new Date(liability.payoffMetrics.estimatedPayoffDate).toLocaleDateString() : '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
 
                   {/* ── Income + Expenses side-by-side ────────────────── */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -349,7 +486,7 @@ export default function MonthlyOverviewPage() {
                     )}
 
                     {/* Expenses table */}
-                    {data.expenseItems.length > 0 && (
+                    {data.fixedExpenseItems.length > 0 && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
@@ -365,7 +502,7 @@ export default function MonthlyOverviewPage() {
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                              {data.expenseItems.map((exp, i) => (
+                              {data.fixedExpenseItems.map((exp, i) => (
                                 <tr key={exp._id || i} className="hover:bg-red-50 dark:hover:bg-red-900/20">
                                   <td className="px-3 py-1.5 font-medium text-gray-700 dark:text-gray-300">{exp.name || '—'}</td>
                                   <td className="px-3 py-1.5 text-center">
@@ -378,7 +515,46 @@ export default function MonthlyOverviewPage() {
                             <tfoot>
                               <tr className="bg-red-50 dark:bg-red-900/30">
                                 <td colSpan={2} className="px-3 py-1.5 text-xs font-bold text-red-700 dark:text-red-300 uppercase">{t('Total', 'Total')}</td>
-                                <td className="px-3 py-1.5 text-right text-xs font-bold text-red-700 dark:text-red-300">${(data.totalExpenses || 0).toFixed(2)}</td>
+                                <td className="px-3 py-1.5 text-right text-xs font-bold text-red-700 dark:text-red-300">${(data.fixedExpenseTotal || 0).toFixed(2)}</td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {data.variableItems.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />
+                          <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">{t('Variable Expenses', 'Gastos Variables')}</span>
+                        </div>
+                        <div className="border border-gray-200 dark:border-gray-600 rounded-xl overflow-hidden">
+                          <table className="w-full text-xs">
+                            <thead className="bg-gray-50 dark:bg-gray-700">
+                              <tr>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400">{t('Category', 'Categoría')}</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400">{t('Description', 'Descripción')}</th>
+                                <th className="px-3 py-2 text-center font-semibold text-gray-500 dark:text-gray-400">{t('Source', 'Fuente')}</th>
+                                <th className="px-3 py-2 text-right font-semibold text-gray-500 dark:text-gray-400">{t('Amount', 'Monto')}</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                              {data.variableItems.map((exp, i) => (
+                                <tr key={exp._id || i} className="hover:bg-orange-50 dark:hover:bg-orange-900/20">
+                                  <td className="px-3 py-1.5 font-medium text-gray-700 dark:text-gray-300">{exp.category || '—'}</td>
+                                  <td className="px-3 py-1.5 text-gray-500 dark:text-gray-400">{exp.description || '—'}</td>
+                                  <td className="px-3 py-1.5 text-center">
+                                    <span className="inline-block px-1.5 py-0.5 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 capitalize">{exp.source || 'manual'}</span>
+                                  </td>
+                                  <td className="px-3 py-1.5 text-right font-semibold text-orange-600 dark:text-orange-400">${(Number(exp.amount) || 0).toFixed(2)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot>
+                              <tr className="bg-orange-50 dark:bg-orange-900/30">
+                                <td colSpan={3} className="px-3 py-1.5 text-xs font-bold text-orange-700 dark:text-orange-300 uppercase">{t('Total', 'Total')}</td>
+                                <td className="px-3 py-1.5 text-right text-xs font-bold text-orange-700 dark:text-orange-300">${(data.variableExpenseTotal || 0).toFixed(2)}</td>
                               </tr>
                             </tfoot>
                           </table>

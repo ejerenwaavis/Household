@@ -12,6 +12,7 @@ import User from '../models/User.js';
 import { handlePlaidWebhook } from '../webhooks/plaidWebhook.js';
 import { syncAllTransactions, syncAccountTransactions } from '../services/transactionSyncService.js';
 import { resolveDuplicate, detectAndMarkDuplicates } from '../services/duplicateDetectionService.js';
+import { buildTransactionEnrichment } from '../services/transactionReconciliationService.js';
 
 const router = Router();
 
@@ -150,6 +151,30 @@ router.get('/linked-accounts', authMiddleware, async (req, res, next) => {
   } catch (error) {
     console.error('[Plaid Route] Error fetching linked accounts:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+router.patch('/linked-accounts/:accountId', authMiddleware, async (req, res, next) => {
+  try {
+    const { accountId } = req.params;
+    const { householdId } = req.user;
+    const { accountType, accountSubtype, accountName } = req.body;
+
+    const linkedAccount = await LinkedAccount.findOne({ _id: accountId, householdId, isActive: true });
+    if (!linkedAccount) {
+      return res.status(404).json({ error: 'Linked account not found' });
+    }
+
+    if (accountType) linkedAccount.accountType = accountType;
+    if (accountSubtype) linkedAccount.accountSubtype = accountSubtype;
+    if (accountName) linkedAccount.accountName = accountName;
+    linkedAccount.updatedAt = new Date();
+    await linkedAccount.save();
+
+    res.json({ linkedAccount });
+  } catch (error) {
+    console.error('[Plaid Route] Error updating linked account:', error);
+    res.status(400).json({ error: error.message });
   }
 });
 
@@ -359,8 +384,10 @@ router.get('/transactions', authMiddleware, async (req, res, next) => {
       .skip(parseInt(offset))
       .lean();
 
+    const enrichedTransactions = await buildTransactionEnrichment(transactions);
+
     res.json({
-      transactions,
+      transactions: enrichedTransactions,
       pagination: {
         total,
         limit: parseInt(limit),
@@ -389,13 +416,14 @@ router.get('/transactions/:transactionId', authMiddleware, async (req, res, next
     const transaction = await PlaidTransaction.findOne({
       _id: transactionId,
       householdId
-    });
+    }).lean();
 
     if (!transaction) {
       return res.status(404).json({ error: 'Transaction not found' });
     }
 
-    res.json({ transaction });
+    const [enrichedTransaction] = await buildTransactionEnrichment([transaction]);
+    res.json({ transaction: enrichedTransaction });
   } catch (error) {
     console.error('[Plaid Route] Error fetching transaction:', error);
     res.status(400).json({ error: error.message });
@@ -412,14 +440,30 @@ router.patch('/transactions/:transactionId', authMiddleware, async (req, res, ne
     const { householdId } = req.user;
     const { userCategory, isReconciled, reconcilationNotes } = req.body;
 
+    const existingTransaction = await PlaidTransaction.findOne({ _id: transactionId, householdId });
+    if (!existingTransaction) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+
+    const effectiveCategory = typeof userCategory !== 'undefined' ? userCategory : existingTransaction.userCategory;
+
+    const update = {
+      ...(userCategory && { userCategory }),
+      ...(reconcilationNotes && { reconcilationNotes }),
+      updatedAt: new Date(),
+    };
+
+    if (isReconciled !== undefined) {
+      update.isReconciled = isReconciled;
+      update.reconciliationReason = isReconciled ? 'manual_review' : (effectiveCategory ? 'categorized_unreviewed' : 'unreviewed');
+      update.reconciledAt = isReconciled ? new Date() : null;
+    } else if (userCategory && !existingTransaction.isReconciled) {
+      update.reconciliationReason = 'categorized_unreviewed';
+    }
+
     const transaction = await PlaidTransaction.findOneAndUpdate(
       { _id: transactionId, householdId },
-      {
-        ...(userCategory && { userCategory }),
-        ...(isReconciled !== undefined && { isReconciled }),
-        ...(reconcilationNotes && { reconcilationNotes }),
-        updatedAt: new Date()
-      },
+      update,
       { new: true }
     );
 
@@ -427,9 +471,11 @@ router.patch('/transactions/:transactionId', authMiddleware, async (req, res, ne
       return res.status(404).json({ error: 'Transaction not found' });
     }
 
+    const [enrichedTransaction] = await buildTransactionEnrichment([transaction.toObject ? transaction.toObject() : transaction]);
+
     res.json({
       message: 'Transaction updated',
-      transaction
+      transaction: enrichedTransaction
     });
   } catch (error) {
     console.error('[Plaid Route] Error updating transaction:', error);
@@ -444,9 +490,17 @@ router.patch('/transactions/:transactionId', authMiddleware, async (req, res, ne
 router.get('/transactions-summary', authMiddleware, async (req, res, next) => {
   try {
     const { householdId } = req.user;
-    const { month } = req.query;
+    const { month, accountId } = req.query;
 
-    const filter = { householdId };
+    const filter = {
+      householdId,
+      amount: { $gt: 0 },
+      isPending: { $ne: true },
+      isDuplicate: { $ne: true },
+    };
+    if (accountId) {
+      filter.linkedAccountId = accountId;
+    }
     if (month) {
       const [year, monthNum] = month.split('-');
       const startDate = new Date(year, monthNum - 1, 1);
@@ -459,7 +513,7 @@ router.get('/transactions-summary', authMiddleware, async (req, res, next) => {
       { $match: filter },
       {
         $group: {
-          _id: '$primaryCategory',
+          _id: { $ifNull: ['$userCategory', '$primaryCategory'] },
           count: { $sum: 1 },
           total: { $sum: '$amount' },
           avg: { $avg: '$amount' }
@@ -468,7 +522,21 @@ router.get('/transactions-summary', authMiddleware, async (req, res, next) => {
       { $sort: { total: -1 } }
     ]);
 
-    res.json({ summary });
+    const reviewTransactions = await PlaidTransaction.find(filter)
+      .select('linkedAccountId amount merchant name description isPending isDuplicate isReconciled reconciliationReason plaidTransactionId userCategory updatedAt date')
+      .lean();
+    const enrichedReviewTransactions = await buildTransactionEnrichment(reviewTransactions);
+    const review = enrichedReviewTransactions.reduce((stats, transaction) => {
+      const details = transaction.reconciliationDetails || {};
+      stats.total += 1;
+      if (details.needsReview) stats.unreconciledCount += 1;
+      else stats.reconciledCount += 1;
+      if (details.reason === 'duplicate_review') stats.duplicateReviewCount += 1;
+      if (details.isAuto) stats.autoMatchedCount += 1;
+      return stats;
+    }, { total: 0, reconciledCount: 0, unreconciledCount: 0, duplicateReviewCount: 0, autoMatchedCount: 0 });
+
+    res.json({ summary, review });
   } catch (error) {
     console.error('[Plaid Route] Error fetching summary:', error);
     res.status(400).json({ error: error.message });

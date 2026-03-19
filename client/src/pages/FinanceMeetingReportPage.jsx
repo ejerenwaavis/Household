@@ -95,6 +95,8 @@ export default function FinanceMeetingReportPage() {
   const [fixedPayments, setFixedPayments] = useState([]);
   const [varExpenses, setVarExpenses] = useState([]);
   const [goals, setGoals] = useState([]);
+  const [liabilityReport, setLiabilityReport] = useState({ liabilities: [], summary: null, monthSummary: null });
+  const [goalContributionTotals, setGoalContributionTotals] = useState({});
   const [splits, setSplits] = useState([]);
   const [summary, setSummary] = useState(null);
 
@@ -115,12 +117,13 @@ export default function FinanceMeetingReportPage() {
     setError(null);
     try {
       const hid = user.householdId;
-      const [incRes, varRes, fixedRes, fixPayRes, goalsRes, splitsRes, summaryRes, bankTxnRes] = await Promise.all([
+      const [incRes, varRes, fixedRes, fixPayRes, goalsRes, liabilityRes, splitsRes, summaryRes, bankTxnRes] = await Promise.all([
         api.get(`/income/${hid}`).catch(() => ({ data: { incomes: [] } })),
         api.get(`/expenses/${hid}`).catch(() => ({ data: { expenses: [] } })),
         api.get(`/fixed-expenses/${hid}`).catch(() => ({ data: { expenses: [] } })),
         api.get(`/fixed-expense-payments/${hid}?month=${selectedMonth}`).catch(() => ({ data: { payments: [] } })),
         api.get(`/goals/${hid}`).catch(() => ({ data: { goals: [] } })),
+        api.get(`/goals/${hid}/liability-report?month=${selectedMonth}`).catch(() => ({ data: { liabilities: [], summary: null, monthSummary: null } })),
         api.get(`/income-splits/${hid}`).catch(() => ({ data: { splits: [] } })),
         api.get(`/households/${hid}/summary`).catch(() => ({ data: {} })),
         api.get(`/bank-transactions/${hid}?month=${selectedMonth}`).catch(() => ({ data: { transactions: [] } })),
@@ -133,6 +136,24 @@ export default function FinanceMeetingReportPage() {
       const allGoals = goalsRes.data.goals || [];
       const allSplits = splitsRes.data.splits || [];
 
+      const goalContributionResponses = await Promise.all(
+        allGoals.map((goal) =>
+          api.get(`/goal-contributions/${hid}/${goal._id}`).catch(() => ({ data: { contributions: [] } }))
+        )
+      );
+      const contributionTotals = {};
+      allGoals.forEach((goal, index) => {
+        const contributions = goalContributionResponses[index]?.data?.contributions || [];
+        const monthContributions = contributions.filter((contribution) => {
+          const rawDate = contribution.contributionDate || contribution.createdAt;
+          return rawDate && String(rawDate).substring(0, 7) === selectedMonth;
+        });
+        contributionTotals[goal._id] = monthContributions.reduce(
+          (sum, contribution) => sum + (Number(contribution.amount) || 0),
+          0
+        );
+      });
+
       // Filter to selected month
       setIncome(allIncome.filter(i => i.month === selectedMonth));
       setVarExpenses(allVar.filter(e => (e.month || (e.date || '').substring(0, 7)) === selectedMonth));
@@ -140,6 +161,12 @@ export default function FinanceMeetingReportPage() {
       setFixedExpenses(allFixed);
       setFixedPayments(allFixPay.filter(p => (p.month || (p.paymentDate || '').substring(0, 7)) === selectedMonth));
       setGoals(allGoals);
+      setLiabilityReport({
+        liabilities: liabilityRes.data.liabilities || [],
+        summary: liabilityRes.data.summary || null,
+        monthSummary: liabilityRes.data.monthSummary || null,
+      });
+      setGoalContributionTotals(contributionTotals);
       setSplits(allSplits);
       setSummary(summaryRes.data);
       setSavedTxns(bankTxnRes.data.transactions || []);
@@ -191,8 +218,14 @@ export default function FinanceMeetingReportPage() {
   const totalImported = allStatementDebits.reduce((s, r) => s + (Number(r.amount) || 0), 0);
 
   const totalExpenses = totalFixed + totalVar + totalImported;
+  const liabilities = liabilityReport.liabilities || [];
+  const savingsGoals = goals.filter((goal) => !goal.isLiabilityTracked);
+  const plannedSavings = savingsGoals.reduce((sum, goal) => sum + (Number(goal.monthlyContribution) || 0), 0);
+  const actualSavings = savingsGoals.reduce((sum, goal) => sum + (Number(goalContributionTotals[goal._id]) || 0), 0);
+  const outstandingSavings = Math.max(0, plannedSavings - actualSavings);
+  const toSavings = actualSavings - plannedSavings;
   const netRemaining = totalIncome - totalExpenses;
-  const toSavings = goals.reduce((s, g) => s + (Number(g.monthlyContribution) || 0), 0);
+  const afterSavings = netRemaining + toSavings;
 
   // ── CSV parsing (client-side) ──────────────────────────────────────────────
   const parseCSV = (file) => {
@@ -771,7 +804,7 @@ export default function FinanceMeetingReportPage() {
                 { label: 'Total Income', value: fmt(totalIncome), color: 'green', icon: '↑' },
                 { label: 'Total Expenses', value: fmt(totalExpenses), color: 'red', icon: '↓' },
                 { label: 'Net Remaining', value: fmt(netRemaining), color: netRemaining >= 0 ? 'blue' : 'red', icon: '=' },
-                { label: 'To Savings', value: fmt(toSavings), color: 'purple', icon: '🏦' },
+                { label: 'To Savings', value: fmt(toSavings), color: toSavings <= 0 ? 'purple' : 'green', icon: '🏦' },
               ].map(card => (
                 <div key={card.label} className={`bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-100 dark:border-gray-700 print:rounded-none print:bg-white print:border-gray-200`}>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 print:text-gray-500">{card.label}</p>
@@ -939,12 +972,94 @@ export default function FinanceMeetingReportPage() {
             )}
 
             {/* ── 5. Savings & Goals ────────────────────────────────────── */}
-            {goals.length > 0 && (
+            {liabilities.length > 0 && (
               <ReportSection>
-                <SectionHeader title="5. Savings &amp; Goals" subtitle={`${goals.length} goals`} />
+                <SectionHeader title="5. Liabilities & Payoff" subtitle={`${liabilities.length} tracked`} />
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                  <div className="rounded-lg border border-orange-100 bg-orange-50/70 p-3 print:border-gray-200 print:bg-transparent">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">Remaining Balance</p>
+                    <p className="text-lg font-bold text-orange-700">{fmt(liabilityReport.summary?.totalRemainingBalance)}</p>
+                  </div>
+                  <div className="rounded-lg border border-green-100 bg-green-50/70 p-3 print:border-gray-200 print:bg-transparent">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">Paid Down</p>
+                    <p className="text-lg font-bold text-green-700">{fmt(liabilityReport.summary?.totalPaidDown)}</p>
+                  </div>
+                  <div className="rounded-lg border border-blue-100 bg-blue-50/70 p-3 print:border-gray-200 print:bg-transparent">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">Payoff Progress</p>
+                    <p className="text-lg font-bold text-blue-700">{Number(liabilityReport.summary?.overallPayoffPercent || 0)}%</p>
+                  </div>
+                  <div className="rounded-lg border border-purple-100 bg-purple-50/70 p-3 print:border-gray-200 print:bg-transparent">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">Paid This Month</p>
+                    <p className="text-lg font-bold text-purple-700">{fmt(liabilityReport.summary?.totalPaidThisMonth)}</p>
+                  </div>
+                </div>
+
                 <div className="space-y-4">
-                  {goals.map((goal, i) => {
-                    const pct = goal.target > 0 ? Math.min((goal.currentBalance / goal.target) * 100, 100) : 0;
+                  {liabilities.map((liability, i) => (
+                    <div key={liability._id || i} className="border border-gray-100 dark:border-gray-700 rounded-lg p-3 print:border-gray-200">
+                      <div className="flex items-start justify-between gap-4 mb-3">
+                        <div>
+                          <p className="font-semibold text-sm text-gray-800 dark:text-gray-100 print:text-gray-900">{liability.name}</p>
+                          <p className="text-xs text-gray-400">{liability.linkedFixedExpenseName || 'Tracked liability'}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-orange-700">{fmt(liability.payoffMetrics?.remainingBalance)}</p>
+                          <p className="text-xs text-gray-400">remaining</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3 text-sm">
+                        <div>
+                          <p className="text-xs text-gray-400">Original</p>
+                          <p className="font-semibold text-gray-700 dark:text-gray-200">{fmt(liability.payoffMetrics?.originalBalance)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-400">Paid Down</p>
+                          <p className="font-semibold text-green-600">{fmt(liability.payoffMetrics?.paidDown)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-400">Scheduled Payment</p>
+                          <p className="font-semibold text-blue-600">{fmt(liability.payoffMetrics?.scheduledPayment)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-400">Estimated Payoff</p>
+                          <p className="font-semibold text-purple-600">{liability.payoffMetrics?.estimatedPayoffDate ? new Date(liability.payoffMetrics.estimatedPayoffDate).toLocaleDateString() : '—'}</p>
+                        </div>
+                      </div>
+
+                      {Array.isArray(liability.paymentHistory) && liability.paymentHistory.length > 0 && (
+                        <div className="border-t border-gray-100 dark:border-gray-700 pt-3 print:border-gray-200">
+                          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Matched Payment History</p>
+                          <div className="space-y-2">
+                            {liability.paymentHistory.slice(0, 3).map((payment) => (
+                              <div key={payment._id} className="flex items-center justify-between text-sm">
+                                <div>
+                                  <p className="text-gray-700 dark:text-gray-300 print:text-gray-800">{payment.fixedExpenseName || payment.paymentSourceLabel}</p>
+                                  <p className="text-xs text-gray-400">{payment.contributionDate ? new Date(payment.contributionDate).toLocaleDateString() : '—'} · {payment.paymentSourceLabel}</p>
+                                </div>
+                                <p className="font-semibold text-green-600">{fmt(payment.amount)}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </ReportSection>
+            )}
+
+            {/* ── 6. Savings & Goals ────────────────────────────────────── */}
+            {savingsGoals.length > 0 && (
+              <ReportSection>
+                <SectionHeader title="6. Savings &amp; Goals" subtitle={`${savingsGoals.length} goals`} />
+                <div className="space-y-4">
+                  {savingsGoals.map((goal, i) => {
+                    const pct = goal.progressPercent != null
+                      ? goal.progressPercent
+                      : (goal.target > 0 ? Math.min((goal.currentBalance / goal.target) * 100, 100) : 0);
+                    const contributedThisMonth = Number(goalContributionTotals[goal._id]) || 0;
+                    const remainingThisMonth = Math.max(0, (Number(goal.monthlyContribution) || 0) - contributedThisMonth);
                     return (
                       <div key={goal._id || i} className="border border-gray-100 dark:border-gray-700 rounded-lg p-3 print:border-gray-200">
                         <div className="flex items-center justify-between mb-2">
@@ -966,7 +1081,11 @@ export default function FinanceMeetingReportPage() {
                         <div className="flex justify-between mt-1">
                           <span className="text-xs text-gray-400">{pct.toFixed(0)}% complete</span>
                           {goal.monthlyContribution > 0 && (
-                            <span className="text-xs text-gray-400">Monthly contribution: {fmt(goal.monthlyContribution)}</span>
+                            <span className="text-xs text-gray-400">
+                              {goal.isLiabilityTracked
+                                ? `Monthly payment: ${fmt(goal.monthlyContribution)}`
+                                : `Monthly contribution: ${fmt(goal.monthlyContribution)} · Posted: ${fmt(contributedThisMonth)} · Remaining: ${fmt(-remainingThisMonth)}`}
+                            </span>
                           )}
                         </div>
                       </div>
@@ -974,7 +1093,7 @@ export default function FinanceMeetingReportPage() {
                   })}
                 </div>
                 <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 flex justify-between print:border-gray-200">
-                  <span className="font-bold text-gray-700 dark:text-gray-200 print:text-gray-800">Total Monthly Contributions</span>
+                  <span className="font-bold text-gray-700 dark:text-gray-200 print:text-gray-800">Savings Still To Fund This Month</span>
                   <span className="font-bold text-teal-600">{fmt(toSavings)}</span>
                 </div>
               </ReportSection>
@@ -983,7 +1102,7 @@ export default function FinanceMeetingReportPage() {
             {/* ── 6. Income Split ──────────────────────────────────────── */}
             {splits.length > 0 && (
               <ReportSection>
-                <SectionHeader title="6. Household Income Split" />
+                <SectionHeader title="7. Household Income Split" />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {splits.map((split, i) => {
                     const monthly = (netRemaining * split.splitPercentage) / 100;
@@ -1019,10 +1138,13 @@ export default function FinanceMeetingReportPage() {
                   { label: 'Total Income', val: fmt(totalIncome), color: 'text-green-600' },
                   { label: 'Fixed Expenses', val: fmt(totalFixed), color: 'text-red-600' },
                   { label: 'Variable Expenses', val: fmt(totalVar + totalImported), color: 'text-orange-600' },
+                  { label: 'Liability Paid This Month', val: fmt(liabilityReport.summary?.totalPaidThisMonth), color: 'text-amber-600' },
                   { label: 'Total Expenses', val: fmt(totalExpenses), color: 'text-red-700', bold: true },
                   { label: 'Net Remaining', val: fmt(netRemaining), color: netRemaining >= 0 ? 'text-blue-600' : 'text-red-600', bold: true },
-                  { label: 'Savings Contributions', val: fmt(toSavings), color: 'text-teal-600' },
-                  { label: 'After Savings', val: fmt(netRemaining - toSavings), color: 'text-indigo-600', bold: true },
+                  { label: 'Planned Savings', val: fmt(plannedSavings), color: 'text-teal-600' },
+                  { label: 'Savings Posted', val: fmt(actualSavings), color: 'text-green-600' },
+                  { label: 'To Savings', val: fmt(toSavings), color: 'text-indigo-600' },
+                  { label: 'After Savings', val: fmt(afterSavings), color: 'text-indigo-600', bold: true },
                 ].map(row => (
                   <div key={row.label} className={`flex justify-between items-center ${row.bold ? 'border-t border-gray-200 dark:border-gray-600 pt-2 mt-2 print:border-gray-200' : ''}`}>
                     <span className={`${row.bold ? 'font-bold text-gray-800 dark:text-gray-100 print:text-gray-900' : 'text-gray-600 dark:text-gray-400 print:text-gray-600'}`}>{row.label}</span>

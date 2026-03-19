@@ -34,11 +34,17 @@ const typeColors = {
 const typeLabel = (t, tp) =>
   t(tp, tp === 'Emergency' ? 'Emergencia' : tp === 'Project' ? 'Proyecto' : tp === 'Investment' ? 'Inversión' : 'Otro');
 
-export default function GoalList({ householdId, goals = [], linkedAccounts = [], totalMonthlyContribution = 0, loading = false, refresh }) {
+export default function GoalList({ householdId, goals = [], linkedAccounts = [], fixedExpenses = [], totalMonthlyContribution = 0, totalMonthlyLiabilityPayment = 0, liabilityPaymentStatus = {}, loading = false, refresh, mode = 'goal' }) {
   const { t } = useLanguage();
   const [editingGoal, setEditingGoal] = useState(null);
   const [addingFundsTo, setAddingFundsTo] = useState(null);
   const [syncingId, setSyncingId] = useState(null);
+
+  const formatCurrency = (amount) => {
+    const numericAmount = Number(amount) || 0;
+    const absoluteValue = Math.abs(numericAmount).toFixed(2);
+    return numericAmount < 0 ? `-$${absoluteValue}` : `$${absoluteValue}`;
+  };
 
   const handleDelete = async (goal) => {
     const id = goal._id || goal.id;
@@ -96,6 +102,19 @@ export default function GoalList({ householdId, goals = [], linkedAccounts = [],
     }
   };
 
+  const handleDeleteContribution = async (goal, payment) => {
+    if (!householdId || !payment?.canDelete) return;
+    if (!window.confirm(t('Delete this payment entry?', '¿Eliminar este registro de pago?'))) return;
+    try {
+      const goalId = goal._id || goal.id;
+      await api.delete(`/goal-contributions/${householdId}/${goalId}/${payment._id}`);
+      refresh && refresh();
+    } catch (err) {
+      console.error('[GoalList] delete contribution error:', err);
+      alert(err?.response?.data?.error || t('Failed to delete payment', 'Error al eliminar el pago'));
+    }
+  };
+
   if (loading) {
     return <div className="text-gray-500">{t('Loading…', 'Cargando…')}</div>;
   }
@@ -103,8 +122,12 @@ export default function GoalList({ householdId, goals = [], linkedAccounts = [],
   if (goals.length === 0) {
     return (
       <div className="text-center py-12 text-gray-400">
-        <div className="text-4xl mb-3">🎯</div>
-        <div className="text-sm">{t('No goals yet. Add your first savings goal!', 'Sin objetivos aún. ¡Agrega tu primer objetivo de ahorro!')}</div>
+        <div className="text-4xl mb-3">{mode === 'liability' ? '🏠' : '🎯'}</div>
+        <div className="text-sm">
+          {mode === 'liability'
+            ? t('No liabilities tracked yet. Link or add your first loan account.', 'Aún no hay deudas rastreadas. Vincula o agrega tu primera cuenta de préstamo.')
+            : t('No goals yet. Add your first savings goal!', 'Sin objetivos aún. ¡Agrega tu primer objetivo de ahorro!')}
+        </div>
       </div>
     );
   }
@@ -117,6 +140,9 @@ export default function GoalList({ householdId, goals = [], linkedAccounts = [],
         const progress = goal.progressPercent != null
           ? goal.progressPercent
           : (goal.target > 0 ? Math.min(100, Math.round((goal.currentBalance / goal.target) * 100)) : null);
+        const isLiabilityTracked = Boolean(goal.isLiabilityTracked);
+        const paymentStatus = liabilityPaymentStatus[goal._id] || null;
+        const payoffMetrics = goal.payoffMetrics || null;
 
         // Find the live linked account record (from Plaid-synced list)
         const linkedAcct = goal.linkedAccountId
@@ -143,9 +169,16 @@ export default function GoalList({ householdId, goals = [], linkedAccounts = [],
                   </span>
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  {t('Monthly contribution', 'Aportación mensual')}:{' '}
+                  {isLiabilityTracked ? t('Monthly payment', 'Pago mensual') : t('Monthly contribution', 'Aportación mensual')}:{' '}
                   <span className="font-medium text-gray-700 dark:text-gray-300">${Number(goal.monthlyContribution || 0).toFixed(2)}</span>
                 </div>
+                {isLiabilityTracked && paymentStatus && (
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {t('Paid this month', 'Pagado este mes')}: <span className="font-medium text-green-600 dark:text-green-400">{formatCurrency(paymentStatus.paid || 0)}</span>
+                    {' · '}
+                    {t('Remaining this month', 'Restante este mes')}: <span className="font-medium text-red-600 dark:text-red-400">{formatCurrency(-(Number(paymentStatus.remaining) || 0))}</span>
+                  </div>
+                )}
 
                 {/* Linked bank account chip */}
                 {linkedAcct && (
@@ -168,6 +201,11 @@ export default function GoalList({ householdId, goals = [], linkedAccounts = [],
                     >
                       {isSyncing ? t('Syncing…', 'Sincronizando…') : t('Sync Balance', 'Sincronizar saldo')}
                     </button>
+                    {isLiabilityTracked && goal.linkedFixedExpenseName && (
+                      <span className="text-xs text-orange-600 dark:text-orange-400">
+                        {t('Linked payment', 'Pago vinculado')}: {goal.linkedFixedExpenseName}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -176,7 +214,7 @@ export default function GoalList({ householdId, goals = [], linkedAccounts = [],
                   onClick={() => handleAddFundsToGoal(goal)}
                   className="text-sm text-green-600 hover:text-green-700 transition-colors"
                 >
-                  {t('Add Funds', 'Agregar Fondos')}
+                  {isLiabilityTracked ? t('Record Payment', 'Registrar Pago') : t('Add Funds', 'Agregar Fondos')}
                 </button>
                 <button
                   onClick={() => setEditingGoal(goal)}
@@ -193,14 +231,70 @@ export default function GoalList({ householdId, goals = [], linkedAccounts = [],
               </div>
             </div>
 
-            {goal.target > 0 ? (
+            {isLiabilityTracked && payoffMetrics ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+                  <div className="rounded-xl bg-white/60 dark:bg-gray-700/40 px-3 py-2 border border-orange-100 dark:border-orange-800">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">{t('Remaining Balance', 'Saldo Restante')}</div>
+                    <div className="font-semibold text-gray-900 dark:text-white">{formatCurrency(payoffMetrics.remainingBalance || 0)}</div>
+                  </div>
+                  <div className="rounded-xl bg-white/60 dark:bg-gray-700/40 px-3 py-2 border border-green-100 dark:border-green-800">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">{t('Paid Down', 'Pagado')}</div>
+                    <div className="font-semibold text-green-700 dark:text-green-400">{formatCurrency(payoffMetrics.paidDown || 0)}</div>
+                  </div>
+                  <div className="rounded-xl bg-white/60 dark:bg-gray-700/40 px-3 py-2 border border-blue-100 dark:border-blue-800">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">{t('Payoff Progress', 'Progreso de Pago')}</div>
+                    <div className="font-semibold text-blue-700 dark:text-blue-400">{Number(payoffMetrics.payoffPercent || 0)}%</div>
+                  </div>
+                  <div className="rounded-xl bg-white/60 dark:bg-gray-700/40 px-3 py-2 border border-purple-100 dark:border-purple-800">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">{t('Est. Payoff', 'Pago Estimado')}</div>
+                    <div className="font-semibold text-purple-700 dark:text-purple-400">
+                      {payoffMetrics.estimatedPayoffDate ? new Date(payoffMetrics.estimatedPayoffDate).toLocaleDateString() : '—'}
+                    </div>
+                  </div>
+                </div>
+
+                {Array.isArray(goal.paymentHistory) && goal.paymentHistory.length > 0 && (
+                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-700/30 p-3">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                      {t('Recent Payment History', 'Historial Reciente de Pagos')}
+                    </div>
+                    <div className="space-y-2">
+                      {goal.paymentHistory.slice(0, 3).map((payment) => (
+                        <div key={payment._id} className="flex items-center justify-between gap-3 text-sm">
+                          <div className="min-w-0">
+                            <div className="font-medium text-gray-800 dark:text-gray-200">
+                              {payment.fixedExpenseName || t('Liability Payment', 'Pago de Pasivo')}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                              {payment.paymentSourceLabel || payment.source} · {payment.contributionDate ? new Date(payment.contributionDate).toLocaleDateString() : '—'}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <div className="font-semibold text-green-600 dark:text-green-400">{formatCurrency(payment.amount || 0)}</div>
+                            {payment.canDelete && (
+                              <button
+                                onClick={() => handleDeleteContribution(goal, payment)}
+                                className="text-xs text-red-600 hover:text-red-700 transition-colors"
+                              >
+                                {t('Delete', 'Eliminar')}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : goal.target > 0 ? (
               <div>
                 <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400 mb-1.5">
                   <span>
-                    ${Number(goal.currentBalance || 0).toFixed(2)} {t('saved', 'guardado')}
+                    ${Number(goal.currentBalance || 0).toFixed(2)} {isLiabilityTracked ? t('remaining', 'restante') : t('saved', 'guardado')}
                   </span>
                   <span>
-                    {t('of', 'de')} ${Number(goal.target).toFixed(2)} &bull; {progress}%
+                    {isLiabilityTracked ? t('starting balance', 'saldo inicial') : t('of', 'de')} ${Number(goal.target).toFixed(2)} &bull; {progress}%
                   </span>
                 </div>
                 <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-3 overflow-hidden border border-gray-200 dark:border-gray-600">
@@ -223,16 +317,31 @@ export default function GoalList({ householdId, goals = [], linkedAccounts = [],
       })}
 
       {/* Total monthly contributions summary */}
-      <div className="bg-gradient-to-r from-teal-50 dark:from-teal-900/30 to-green-50 dark:to-green-900/30 rounded-2xl p-5 border border-teal-100 dark:border-teal-700/50 mt-2">
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-medium text-gray-600 dark:text-gray-300">
-            {t('Total Monthly Contributions', 'Total de Aportaciones Mensuales')}
-          </div>
-          <div className="text-2xl font-bold text-teal-600 dark:text-teal-400">
-            ${Number(totalMonthlyContribution || 0).toFixed(2)}
+      {mode !== 'liability' && (
+        <div className="bg-gradient-to-r from-teal-50 dark:from-teal-900/30 to-green-50 dark:to-green-900/30 rounded-2xl p-5 border border-teal-100 dark:border-teal-700/50 mt-2">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium text-gray-600 dark:text-gray-300">
+              {t('Total Monthly Savings Contributions', 'Total de Aportaciones Mensuales de Ahorro')}
+            </div>
+            <div className="text-2xl font-bold text-teal-600 dark:text-teal-400">
+            {formatCurrency(totalMonthlyContribution || 0)}
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {(mode === 'liability' || Number(totalMonthlyLiabilityPayment || 0) > 0) && (
+        <div className="bg-gradient-to-r from-orange-50 dark:from-orange-900/30 to-red-50 dark:to-red-900/30 rounded-2xl p-5 border border-orange-100 dark:border-orange-700/50 mt-2">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium text-gray-600 dark:text-gray-300">
+              {t('Total Monthly Liability Payments', 'Total de Pagos Mensuales de Deuda')}
+            </div>
+            <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+              {formatCurrency(totalMonthlyLiabilityPayment || 0)}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="text-right">
         <button
@@ -247,6 +356,7 @@ export default function GoalList({ householdId, goals = [], linkedAccounts = [],
         <EditGoalModal
           goal={editingGoal}
           linkedAccounts={linkedAccounts}
+          fixedExpenses={fixedExpenses}
           onSave={handleSaveEdit}
           onClose={() => setEditingGoal(null)}
         />

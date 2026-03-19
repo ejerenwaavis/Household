@@ -6,6 +6,7 @@
 import mongoose from 'mongoose';
 import PlaidTransaction from '../models/PlaidTransaction.js';
 import logger from '../utils/logger.js';
+import { getAutoReconciliationState } from './transactionReconciliationService.js';
 
 const CATEGORY_KEYWORDS = {
   'Groceries': [
@@ -297,6 +298,14 @@ export async function storeTransactionWithSuggestions(plaidTransaction, linkedAc
 
     // Store transaction with top suggestion
     const topSuggestion = suggestions[0];
+    const autoReconciliation = getAutoReconciliationState({
+      amount: plaidTransaction.amount,
+      merchant: plaidTransaction.merchant_name,
+      name: plaidTransaction.name,
+      description: plaidTransaction.merchant_name || plaidTransaction.name,
+      isPending: plaidTransaction.pending,
+      isDuplicate: false,
+    }, linkedAccount);
 
     const transaction = await PlaidTransaction.create({
       householdId,
@@ -321,7 +330,9 @@ export async function storeTransactionWithSuggestions(plaidTransaction, linkedAc
       
       // Status
       syncedAt: new Date(),
-      isReconciled: false,
+      isReconciled: autoReconciliation.isReconciled,
+      reconciliationReason: autoReconciliation.reconciliationReason,
+      reconciledAt: autoReconciliation.reconciledAt,
       categoryConfidence: topSuggestion?.confidence
     });
 

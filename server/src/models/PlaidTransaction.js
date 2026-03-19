@@ -116,6 +116,26 @@ const plaidTransactionSchema = new mongoose.Schema({
     description: 'Whether user has reviewed and matched this transaction'
   },
 
+  reconciliationReason: {
+    type: String,
+    enum: [
+      'manual_review',
+      'fixed_expense_payment',
+      'synced_income',
+      'duplicate_review',
+      'categorized_unreviewed',
+      'unreviewed',
+      null,
+    ],
+    default: null,
+    description: 'Why this transaction is or is not considered reconciled'
+  },
+
+  reconciledAt: {
+    type: Date,
+    description: 'When the transaction was marked reconciled'
+  },
+
   reconcilationNotes: {
     type: String,
     description: 'User notes about this transaction'
@@ -165,6 +185,7 @@ plaidTransactionSchema.index({ householdId: 1, plaidTransactionId: 1 }, { unique
 plaidTransactionSchema.index({ householdId: 1, date: -1 });
 plaidTransactionSchema.index({ linkedAccountId: 1, date: -1 });
 plaidTransactionSchema.index({ isReconciled: 1, date: -1 });
+plaidTransactionSchema.index({ reconciliationReason: 1, date: -1 });
 plaidTransactionSchema.index({ primaryCategory: 1 });
 
 export default mongoose.model('PlaidTransaction', plaidTransactionSchema);

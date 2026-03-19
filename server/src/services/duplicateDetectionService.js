@@ -93,6 +93,9 @@ export async function detectAndMarkDuplicates(householdId) {
       // b is a likely duplicate of a — mark it
       await PlaidTransaction.findByIdAndUpdate(b._id, {
         isDuplicate: true,
+        isReconciled: false,
+        reconciliationReason: 'duplicate_review',
+        reconciledAt: null,
         originalTransactionId: a._id,
         updatedAt: new Date(),
       });
@@ -119,7 +122,7 @@ export async function resolveDuplicate(transactionId, householdId, action) {
   if (action === 'keep') {
     const txn = await PlaidTransaction.findOneAndUpdate(
       { _id: transactionId, householdId },
-      { isDuplicate: false, originalTransactionId: null, updatedAt: new Date() },
+      { isDuplicate: false, isReconciled: false, reconciliationReason: 'unreviewed', reconciledAt: null, originalTransactionId: null, updatedAt: new Date() },
       { new: true }
     );
     if (!txn) throw new Error('Transaction not found');

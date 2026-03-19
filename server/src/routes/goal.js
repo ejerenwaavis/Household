@@ -2,8 +2,103 @@ import { Router } from 'express';
 import { householdAuthMiddleware, authMiddleware } from '../middleware/auth.js';
 import Goal from '../models/Goal.js';
 import LinkedAccount from '../models/LinkedAccount.js';
+import FixedExpense from '../models/FixedExpense.js';
+import { getLiabilityReport } from '../services/liabilityReportService.js';
 
 const router = Router({ mergeParams: true });
+
+function shouldAutoSyncLinkedAccount(account) {
+  return Boolean(account && account.isActive);
+}
+
+function buildLinkedAccountLabel(account) {
+  if (!account) return null;
+  return `${account.accountName}${account.accountMask ? ` ••${account.accountMask}` : ''}`;
+}
+
+function isLiabilityLinkedAccount(account) {
+  const type = String(account?.accountType || '').toLowerCase();
+  const subtype = String(account?.accountSubtype || '').toLowerCase();
+  return type === 'loan' || subtype.includes('mortgage') || subtype.includes('loan');
+}
+
+function normalizeText(value = '') {
+  return String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function resolveLinkedFixedExpense(householdId, goalDoc, linkedAccount) {
+  if (!isLiabilityLinkedAccount(linkedAccount)) return null;
+
+  if (goalDoc.linkedFixedExpenseId) {
+    return FixedExpense.findOne({ _id: goalDoc.linkedFixedExpenseId, householdId, isActive: true })
+      .select('name amount group')
+      .lean();
+  }
+
+  const fixedExpenses = await FixedExpense.find({ householdId, isActive: true })
+    .select('name amount group')
+    .lean();
+
+  const goalText = normalizeText(`${goalDoc.name || ''} ${linkedAccount?.accountName || ''} ${linkedAccount?.accountOfficialName || ''} ${linkedAccount?.accountSubtype || ''}`);
+  const monthlyContribution = Number(goalDoc.monthlyContribution || 0);
+
+  const ranked = fixedExpenses
+    .map((expense) => {
+      const expenseName = normalizeText(expense.name);
+      let score = 0;
+
+      if (monthlyContribution > 0 && Math.abs((Number(expense.amount) || 0) - monthlyContribution) <= 0.01) score += 5;
+      if (goalText.includes(expenseName) || expenseName.includes(goalText)) score += 4;
+      if (expense.group === 'Housing') score += 2;
+      if (expense.group === 'Debt') score += 1;
+
+      return { expense, score };
+    })
+    .sort((left, right) => right.score - left.score);
+
+  const best = ranked[0];
+  if (!best || best.score <= 0) return null;
+
+  await Goal.updateOne(
+    { _id: goalDoc._id },
+    {
+      linkedFixedExpenseId: String(best.expense._id),
+      linkedFixedExpenseName: best.expense.name,
+    }
+  );
+
+  goalDoc.linkedFixedExpenseId = String(best.expense._id);
+  goalDoc.linkedFixedExpenseName = best.expense.name;
+  return best.expense;
+}
+
+function getGoalProgressPercent(goalDoc, linkedAccount) {
+  const target = Number(goalDoc.target || 0);
+  const currentBalance = Number(goalDoc.currentBalance || 0);
+
+  if (target <= 0) return null;
+  if (isLiabilityLinkedAccount(linkedAccount)) {
+    return Math.max(0, Math.min(100, Math.round(((target - currentBalance) / target) * 100)));
+  }
+
+  return Math.min(100, Math.round((currentBalance / target) * 100));
+}
+
+router.get('/:householdId/liability-report', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId } = req.params;
+    const { month } = req.query;
+    const report = await getLiabilityReport(householdId, month || null);
+    res.json({ householdId, ...report });
+  } catch (err) {
+    console.error('[goals liability-report] error', err && (err.stack || err.message || err));
+    next(err);
+  }
+});
 
 // GET all goals for a household
 router.get('/:householdId', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
@@ -15,24 +110,46 @@ router.get('/:householdId', authMiddleware, householdAuthMiddleware, async (req,
 
     const goalsWithProgress = await Promise.all(goals.map(async (g) => {
       const doc = g.toObject();
-      doc.progressPercent = doc.target > 0
-        ? Math.min(100, Math.round((doc.currentBalance / doc.target) * 100))
-        : null;
+      let linkedAccount = null;
+
       // Attach live linked-account data if one is configured
       if (doc.linkedAccountId) {
         try {
           const acct = await LinkedAccount.findOne({ _id: doc.linkedAccountId, householdId, isActive: true })
-            .select('accountName institutionName accountMask currentBalance availableBalance accountSubtype');
-          doc.linkedAccount = acct ? acct.toObject() : null;
-        } catch (_) { doc.linkedAccount = null; }
+            .select('accountName accountOfficialName accountMask currentBalance availableBalance accountSubtype accountType isActive');
+
+          if (acct && shouldAutoSyncLinkedAccount(acct)) {
+            const liveBalance = Number(acct.currentBalance) || 0;
+            if (Number(doc.currentBalance || 0) !== liveBalance) {
+              await Goal.updateOne({ _id: g._id }, { currentBalance: liveBalance, linkedAccountName: buildLinkedAccountLabel(acct) });
+              doc.currentBalance = liveBalance;
+            }
+          }
+
+          linkedAccount = acct ? acct.toObject() : null;
+          doc.linkedAccount = linkedAccount;
+        } catch (_) {
+          doc.linkedAccount = null;
+        }
       }
+
+      const linkedFixedExpense = await resolveLinkedFixedExpense(householdId, doc, linkedAccount);
+      doc.linkedFixedExpense = linkedFixedExpense;
+
+      doc.isLiabilityTracked = isLiabilityLinkedAccount(linkedAccount);
+      doc.progressPercent = getGoalProgressPercent(doc, linkedAccount);
       return doc;
     }));
 
-    const totalMonthlyContribution = goals.reduce((sum, g) => sum + (g.monthlyContribution || 0), 0);
+    const totalMonthlyContribution = goalsWithProgress
+      .filter((goal) => !goal.isLiabilityTracked)
+      .reduce((sum, goal) => sum + (Number(goal.monthlyContribution) || 0), 0);
+    const totalMonthlyLiabilityPayment = goalsWithProgress
+      .filter((goal) => goal.isLiabilityTracked)
+      .reduce((sum, goal) => sum + (Number(goal.monthlyContribution) || 0), 0);
 
     console.log('[goals GET] found', goals.length, 'goals, totalMonthly:', totalMonthlyContribution);
-    res.json({ householdId, goals: goalsWithProgress, totalMonthlyContribution });
+    res.json({ householdId, goals: goalsWithProgress, totalMonthlyContribution, totalMonthlyLiabilityPayment });
   } catch (err) {
     console.error('[goals GET] error', err && (err.stack || err.message || err));
     next(err);
@@ -43,7 +160,7 @@ router.get('/:householdId', authMiddleware, householdAuthMiddleware, async (req,
 router.post('/:householdId', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
   try {
     const { householdId } = req.params;
-    const { name, monthlyContribution, target, currentBalance, type, linkedAccountId } = req.body;
+    const { name, monthlyContribution, target, currentBalance, type, linkedAccountId, linkedFixedExpenseId } = req.body;
     console.log('[goals POST] incoming', { householdId, user: req.user?.userId, body: req.body });
 
     if (!name || !name.trim()) {
@@ -58,6 +175,13 @@ router.post('/:householdId', authMiddleware, householdAuthMiddleware, async (req
       if (acct) linkedAccountName = `${acct.institutionName || acct.accountName}${acct.accountMask ? ` ••${acct.accountMask}` : ''}`;
     }
 
+    let linkedFixedExpenseName = null;
+    if (linkedFixedExpenseId) {
+      const fixedExpense = await FixedExpense.findOne({ _id: linkedFixedExpenseId, householdId, isActive: true })
+        .select('name');
+      if (fixedExpense) linkedFixedExpenseName = fixedExpense.name;
+    }
+
     const goal = await Goal.create({
       householdId,
       userId: req.user.userId,
@@ -68,12 +192,12 @@ router.post('/:householdId', authMiddleware, householdAuthMiddleware, async (req
       type: type || 'Other',
       linkedAccountId: linkedAccountId || null,
       linkedAccountName,
+      linkedFixedExpenseId: linkedFixedExpenseId || null,
+      linkedFixedExpenseName,
     });
 
     const doc = goal.toObject();
-    doc.progressPercent = doc.target > 0
-      ? Math.min(100, Math.round((doc.currentBalance / doc.target) * 100))
-      : null;
+    doc.progressPercent = getGoalProgressPercent(doc, null);
 
     console.log('[goals POST] created', { id: goal._id, name: goal.name });
     res.status(201).json({ goal: doc });
@@ -111,13 +235,21 @@ router.patch('/:householdId/:id', authMiddleware, householdAuthMiddleware, async
         goal.linkedAccountName = null;
       }
     }
+    if (typeof updates.linkedFixedExpenseId !== 'undefined') {
+      goal.linkedFixedExpenseId = updates.linkedFixedExpenseId || null;
+      if (updates.linkedFixedExpenseId) {
+        const fixedExpense = await FixedExpense.findOne({ _id: updates.linkedFixedExpenseId, householdId, isActive: true })
+          .select('name');
+        goal.linkedFixedExpenseName = fixedExpense ? fixedExpense.name : null;
+      } else {
+        goal.linkedFixedExpenseName = null;
+      }
+    }
 
     await goal.save();
 
     const doc = goal.toObject();
-    doc.progressPercent = doc.target > 0
-      ? Math.min(100, Math.round((doc.currentBalance / doc.target) * 100))
-      : null;
+    doc.progressPercent = getGoalProgressPercent(doc, null);
 
     console.log('[goals PATCH] saved', { id: goal._id });
     res.json({ goal: doc });
@@ -143,9 +275,8 @@ router.post('/:householdId/:id/sync-balance', authMiddleware, householdAuthMiddl
     await goal.save();
 
     const doc = goal.toObject();
-    doc.progressPercent = doc.target > 0
-      ? Math.min(100, Math.round((doc.currentBalance / doc.target) * 100))
-      : null;
+    doc.isLiabilityTracked = isLiabilityLinkedAccount(acct);
+    doc.progressPercent = getGoalProgressPercent(doc, acct);
     doc.linkedAccount = acct.toObject();
 
     console.log('[goals sync-balance] synced', { id: goal._id, syncedBalance });

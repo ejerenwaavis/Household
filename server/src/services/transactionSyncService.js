@@ -12,6 +12,8 @@ import User from '../models/User.js';
 import * as CategorySuggestion from './categorySuggestionService.js';
 import { checkBudgetAlerts } from './budgetAlertService.js';
 import { detectAndMarkDuplicates } from './duplicateDetectionService.js';
+import { autoDetectFixedExpensePaymentFromPlaidTransaction } from './fixedExpensePaymentService.js';
+import { getAutoReconciliationState } from './transactionReconciliationService.js';
 import logger from '../utils/logger.js';
 
 // Accounts whose household has had no user login in this many ms are skipped.
@@ -80,6 +82,14 @@ export async function syncAccountTransactions(linkedAccount) {
         // Get category suggestion
         const suggestions = await CategorySuggestion.suggestCategory(txn, householdId);
         const topSuggestion = suggestions[0];
+        const autoReconciliation = getAutoReconciliationState({
+          amount: txn.amount,
+          merchant: txn.merchant_name,
+          name: txn.name,
+          description: txn.merchant_name || txn.name,
+          isPending: txn.pending,
+          isDuplicate: false,
+        }, linkedAccount);
 
         // Create new transaction record
         const newTransaction = await PlaidTransaction.create({
@@ -105,8 +115,12 @@ export async function syncAccountTransactions(linkedAccount) {
           
           // Status
           syncedAt: new Date(),
-          isReconciled: false
+          isReconciled: autoReconciliation.isReconciled,
+          reconciliationReason: autoReconciliation.reconciliationReason,
+          reconciledAt: autoReconciliation.reconciledAt,
         });
+
+        await autoDetectFixedExpensePaymentFromPlaidTransaction(newTransaction);
 
         synced++;
         logger.debug('[TransactionSync] Transaction saved with category:', {

@@ -20,6 +20,7 @@ const TransactionReviewPage = () => {
   // Data state
   const [transactions, setTransactions] = useState([]);
   const [summary, setSummary] = useState([]);
+  const [reviewStats, setReviewStats] = useState({ total: 0, reconciledCount: 0, unreconciledCount: 0, duplicateReviewCount: 0, autoMatchedCount: 0 });
   const [linkedAccounts, setLinkedAccounts] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
 
@@ -93,6 +94,7 @@ const TransactionReviewPage = () => {
       if (selectedAccount) params.accountId = selectedAccount;
       const data = await TransactionService.getTransactionsSummary(params, authToken);
       setSummary(data.summary || []);
+      setReviewStats(data.review || { total: 0, reconciledCount: 0, unreconciledCount: 0, duplicateReviewCount: 0, autoMatchedCount: 0 });
     } catch {
       // Non-critical – fail silently
     } finally {
@@ -169,6 +171,15 @@ const TransactionReviewPage = () => {
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
   const reconciledCount = transactions.filter(t => t.isReconciled).length;
+
+  const getReasonBadgeClasses = (reason, isReconciled) => {
+    if (reason === 'fixed_expense_payment') return 'bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300';
+    if (reason === 'synced_income') return 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300';
+    if (reason === 'duplicate_review') return 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
+    if (reason === 'manual_review') return 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+    if (!isReconciled) return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
+    return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
+  };
 
   return (
     <Layout>
@@ -303,6 +314,25 @@ const TransactionReviewPage = () => {
           </div>
         </div>
 
+        <div className="mb-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm border border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Reviewed</p>
+            <p className="text-xl font-bold text-green-600 mt-1">{reviewStats.reconciledCount || 0}</p>
+          </div>
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm border border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Needs Review</p>
+            <p className="text-xl font-bold text-amber-600 mt-1">{reviewStats.unreconciledCount || 0}</p>
+          </div>
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm border border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Auto Matched</p>
+            <p className="text-xl font-bold text-teal-600 mt-1">{reviewStats.autoMatchedCount || 0}</p>
+          </div>
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm border border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Duplicate Review</p>
+            <p className="text-xl font-bold text-orange-600 mt-1">{reviewStats.duplicateReviewCount || 0}</p>
+          </div>
+        </div>
+
         {/* ── Category Summary Cards ───────────────────────────── */}
         {summary.length > 0 && (
           <div className="mb-6">
@@ -355,6 +385,7 @@ const TransactionReviewPage = () => {
                 const amount = txn.amount || 0;
                 const isDebit = amount > 0;
                 const displayCategory = txn.userCategory || txn.primaryCategory || '—';
+                const reconciliationDetails = txn.reconciliationDetails || { label: txn.isReconciled ? 'Reconciled' : 'Needs review', reason: txn.isReconciled ? 'manual_review' : 'unreviewed', needsReview: !txn.isReconciled };
 
                 return (
                   <div
@@ -408,6 +439,11 @@ const TransactionReviewPage = () => {
                       {txn.merchant && txn.name !== txn.merchant && (
                         <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{txn.name}</p>
                       )}
+                      <div className="mt-1">
+                        <span className={`inline-flex items-center px-2 py-0.5 text-[11px] font-medium rounded-full ${getReasonBadgeClasses(reconciliationDetails.reason, txn.isReconciled)}`}>
+                          {reconciliationDetails.label}
+                        </span>
+                      </div>
                       {/* Duplicate resolution buttons */}
                       {txn.isDuplicate && (
                         <div className="flex items-center gap-2 mt-1">
@@ -499,10 +535,10 @@ const TransactionReviewPage = () => {
         <div className="mt-8 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-5">
           <h3 className="font-semibold text-blue-900 dark:text-blue-300 mb-2">💡 How Reconciliation Works</h3>
           <ul className="text-sm text-blue-800 dark:text-blue-400 space-y-1">
-            <li>✓ Transactions sync automatically every 15 minutes from linked accounts</li>
-            <li>✓ Click the <strong>circle icon</strong> to mark a transaction as reconciled</li>
-            <li>✓ Click a <strong>category label</strong> to change the category for better insights</li>
-            <li>✓ Pending transactions are highlighted — they'll post within 1-3 business days</li>
+            <li>✓ Fixed expense matches and synced deposits can reconcile automatically</li>
+            <li>✓ Click the <strong>circle icon</strong> to manually mark a reviewed transaction complete</li>
+            <li>✓ Duplicate flags stay unreconciled until you confirm whether to keep or remove them</li>
+            <li>✓ Reason badges explain why a transaction is reconciled or still pending review</li>
           </ul>
         </div>
       </div>
