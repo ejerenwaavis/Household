@@ -111,9 +111,10 @@ export class TokenRotationService {
 
       // Generate new tokens
       const accessPayload = {
-        userId: user._id,
+        userId: user.userId,
         householdId: user.householdId,
         email: user.email,
+        role: user.role,
         ...additionalPayload,
       };
 

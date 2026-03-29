@@ -3,6 +3,10 @@
  * Swagger/OpenAPI documentation for the Household Finance API
  */
 
+const appPort = process.env.PORT || '4000';
+const apiHost = process.env.API_HOST || `localhost:${appPort}`;
+const apiUrl = process.env.API_URL || `http://${apiHost}/api`;
+
 export const swaggerConfig = {
   definition: {
     openapi: '3.0.0',
@@ -21,7 +25,7 @@ export const swaggerConfig = {
     },
     servers: [
       {
-        url: process.env.API_URL || 'http://localhost:5000/api',
+        url: apiUrl,
         description: process.env.NODE_ENV === 'production' ? 'Production' : 'Development server',
         variables: {
           protocol: {
@@ -29,7 +33,7 @@ export const swaggerConfig = {
             default: process.env.NODE_ENV === 'production' ? 'https' : 'http'
           },
           host: {
-            default: process.env.API_HOST || 'localhost:5000'
+            default: apiHost
           }
         }
       }

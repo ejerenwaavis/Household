@@ -6,6 +6,7 @@
 
 import Subscription from '../models/Subscription.js';
 import { PLANS } from '../services/stripeService.js';
+import { resolveActiveHouseholdId } from './auth.js';
 
 // ============================================================
 // Subscription loader (cached on request)
@@ -32,7 +33,8 @@ async function loadSubscription(householdId) {
 export function requireFeature(featureName) {
   return async (req, res, next) => {
     try {
-      const sub = await loadSubscription(req.user.householdId);
+      const householdId = resolveActiveHouseholdId(req);
+      const sub = await loadSubscription(householdId);
       const plan = PLANS[sub.plan?.type || 'free'];
 
       // Check billing status — past_due still gets access but warn
@@ -71,7 +73,8 @@ export function requireFeature(featureName) {
 export function enforceLimit(resourceType) {
   return async (req, res, next) => {
     try {
-      const sub = await loadSubscription(req.user.householdId);
+      const householdId = resolveActiveHouseholdId(req);
+      const sub = await loadSubscription(householdId);
       const planId = sub.plan?.type || 'free';
       const plan = PLANS[planId];
       const limit = plan?.limits?.[resourceType] ?? -1;
@@ -123,8 +126,9 @@ export async function checkTrialStatus(householdId) {
 export function attachSubscription() {
   return async (req, res, next) => {
     try {
-      if (req.user?.householdId) {
-        req.subscription = await loadSubscription(req.user.householdId);
+      const householdId = resolveActiveHouseholdId(req);
+      if (householdId) {
+        req.subscription = await loadSubscription(householdId);
         req.planId = req.subscription?.plan?.type || 'free';
       }
       next();

@@ -1,14 +1,29 @@
 import { Router } from 'express';
-import { householdAuthMiddleware, authMiddleware } from '../middleware/auth.js';
+import { householdAuthMiddleware, authMiddleware, resolveActiveHouseholdId } from '../middleware/auth.js';
 import Household from '../models/Household.js';
 import HouseholdInvite from '../models/HouseholdInvite.js';
 import User from '../models/User.js';
 import Income from '../models/Income.js';
+import Expense from '../models/Expense.js';
+import PlaidTransaction from '../models/PlaidTransaction.js';
+import BankTransaction from '../models/BankTransaction.js';
+import FixedExpense from '../models/FixedExpense.js';
 import { sendInviteEmail, sendWelcomeEmail } from '../services/emailService.js';
 import { getUnifiedMonthlyVariableExpenses } from '../services/unifiedExpenseService.js';
 import { getUnifiedMonthlyIncome } from '../services/unifiedIncomeService.js';
+import {
+  getMonthRange,
+  getMonthResetCutoff,
+  getMonthWorkspace,
+  upsertMonthReset,
+} from '../services/monthWorkspaceService.js';
 
 const router = Router();
+
+function buildResetAwareMonthQuery(baseQuery, resetCutoff) {
+  if (!resetCutoff) return baseQuery;
+  return { ...baseQuery, createdAt: { $gte: resetCutoff } };
+}
 
 // PUBLIC: Get invite info from token (no auth required)
 router.get('/invite-info/:inviteToken', async (req, res, next) => {
@@ -50,7 +65,7 @@ router.get('/user/my-households', authMiddleware, async (req, res, next) => {
 
     res.json({ 
       households,
-      currentHouseholdId: req.user.householdId 
+      currentHouseholdId: resolveActiveHouseholdId(req) 
     });
   } catch (err) {
     console.error('[my-households] error', err && (err.stack || err.message || err));
@@ -82,8 +97,15 @@ router.get('/:householdId/summary', authMiddleware, householdAuthMiddleware, asy
     const now = new Date();
     const monthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
 
-    const { total: totalIncome } = await getUnifiedMonthlyIncome(householdId, monthStr);
-    const { total: totalExpenses } = await getUnifiedMonthlyVariableExpenses(householdId, monthStr);
+    const {
+      total: totalIncome,
+      excludedInternalTransfers: excludedIncomeInternalTransfers,
+    } = await getUnifiedMonthlyIncome(householdId, monthStr);
+    const {
+      total: totalExpenses,
+      excludedInternalTransfers: excludedExpenseInternalTransfers,
+      externalTransferOutflows,
+    } = await getUnifiedMonthlyVariableExpenses(householdId, monthStr);
 
     res.json({
       householdId,
@@ -91,6 +113,127 @@ router.get('/:householdId/summary', authMiddleware, householdAuthMiddleware, asy
       totalIncome,
       totalExpenses,
       balance: totalIncome - totalExpenses,
+      transferBreakdown: {
+        excludedIncomeInternalTransfers,
+        excludedExpenseInternalTransfers,
+        externalTransferOutflows,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Preview what a month workspace reset would clear while preserving fixed expenses.
+router.get('/:householdId/month-workspace/:month/preview', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId, month } = req.params;
+    const workspace = await getMonthWorkspace(householdId, month);
+    const resetCutoff = await getMonthResetCutoff(householdId, month);
+    const { start, end } = getMonthRange(month);
+
+    const [manualExpenseCount, manualIncomeCount, plaidExpenseCount, plaidIncomeCount, uploadedTransactionCount, fixedExpenseCount] = await Promise.all([
+      Expense.countDocuments(buildResetAwareMonthQuery({ householdId, month }, resetCutoff)),
+      Income.countDocuments(buildResetAwareMonthQuery({ householdId, month }, resetCutoff)),
+      PlaidTransaction.countDocuments(buildResetAwareMonthQuery({
+        householdId,
+        date: { $gte: start, $lte: end },
+        amount: { $gt: 0 },
+        isPending: { $ne: true },
+        isDuplicate: { $ne: true },
+      }, resetCutoff)),
+      PlaidTransaction.countDocuments(buildResetAwareMonthQuery({
+        householdId,
+        date: { $gte: start, $lte: end },
+        amount: { $lt: 0 },
+        isPending: { $ne: true },
+        isDuplicate: { $ne: true },
+      }, resetCutoff)),
+      BankTransaction.countDocuments(buildResetAwareMonthQuery({ householdId, month }, resetCutoff)),
+      FixedExpense.countDocuments({ householdId, isActive: true }),
+    ]);
+
+    res.json({
+      householdId,
+      month,
+      mode: workspace?.mode || 'hybrid',
+      lastResetAt: workspace?.resetAt || null,
+      lastResetReason: workspace?.lastResetReason || '',
+      resetCount: workspace?.resetCount || 0,
+      snapshot: {
+        manualExpenseCount,
+        manualIncomeCount,
+        plaidExpenseCount,
+        plaidIncomeCount,
+        uploadedTransactionCount,
+        fixedExpenseCount,
+      },
+      note: 'Reset archives month activity by timestamp cutoff. Fixed expenses remain active.',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Soft reset month workspace: sets a new reset cutoff and preserves fixed expenses.
+router.post('/:householdId/month-workspace/:month/reset', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId, month } = req.params;
+    const { mode = 'hybrid', reason = '' } = req.body || {};
+
+    if (!['upload-led', 'plaid-led', 'hybrid'].includes(mode)) {
+      return res.status(400).json({ error: 'Invalid mode. Use upload-led, plaid-led, or hybrid.' });
+    }
+
+    const resetCutoff = await getMonthResetCutoff(householdId, month);
+    const { start, end } = getMonthRange(month);
+
+    const snapshot = await Promise.all([
+      Expense.countDocuments(buildResetAwareMonthQuery({ householdId, month }, resetCutoff)),
+      Income.countDocuments(buildResetAwareMonthQuery({ householdId, month }, resetCutoff)),
+      PlaidTransaction.countDocuments(buildResetAwareMonthQuery({
+        householdId,
+        date: { $gte: start, $lte: end },
+        amount: { $gt: 0 },
+        isPending: { $ne: true },
+        isDuplicate: { $ne: true },
+      }, resetCutoff)),
+      PlaidTransaction.countDocuments(buildResetAwareMonthQuery({
+        householdId,
+        date: { $gte: start, $lte: end },
+        amount: { $lt: 0 },
+        isPending: { $ne: true },
+        isDuplicate: { $ne: true },
+      }, resetCutoff)),
+      BankTransaction.countDocuments(buildResetAwareMonthQuery({ householdId, month }, resetCutoff)),
+      FixedExpense.countDocuments({ householdId, isActive: true }),
+    ]).then(([manualExpenseCount, manualIncomeCount, plaidExpenseCount, plaidIncomeCount, uploadedTransactionCount, fixedExpenseCount]) => ({
+      manualExpenseCount,
+      manualIncomeCount,
+      plaidExpenseCount,
+      plaidIncomeCount,
+      uploadedTransactionCount,
+      fixedExpenseCount,
+    }));
+
+    const workspace = await upsertMonthReset({
+      householdId,
+      month,
+      mode,
+      reason,
+      resetBy: req.user.userId || req.user._id?.toString() || '',
+      snapshot,
+    });
+
+    res.json({
+      success: true,
+      householdId,
+      month,
+      mode,
+      resetAt: workspace.resetAt,
+      resetCount: workspace.resetCount,
+      archivedSnapshot: snapshot,
+      fixedExpensesPreserved: true,
     });
   } catch (error) {
     next(error);

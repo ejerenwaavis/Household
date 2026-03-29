@@ -11,6 +11,7 @@ export default function HouseholdSwitcher() {
   const [isOpen, setIsOpen] = useState(false);
   const [households, setHouseholds] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [switchingTo, setSwitchingTo] = useState(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -31,19 +32,17 @@ export default function HouseholdSwitcher() {
     }
   };
 
-  const handleSwitchHousehold = (householdId, householdName) => {
-    console.log('[HouseholdSwitcher] STEP 1 - Starting switch to:', { householdId, householdName });
-    console.log('[HouseholdSwitcher] Current user before switch:', user);
-    switchHousehold(householdId, householdName);
-    console.log('[HouseholdSwitcher] STEP 2 - Called switchHousehold');
-    setIsOpen(false);
-    
-    // Add a small delay to ensure auth context updates, then reload page
-    // This ensures localStorage is read fresh and all data refetches with new household ID
-    setTimeout(() => {
-      console.log('[HouseholdSwitcher] STEP 3 - Reloading page with window.location.href = /dashboard');
-      window.location.href = '/dashboard';
-    }, 100);
+  const handleSwitchHousehold = async (householdId, householdName) => {
+    try {
+      setSwitchingTo(householdId);
+      await switchHousehold(householdId, householdName);
+      setIsOpen(false);
+      navigate('/dashboard');
+    } catch (err) {
+      console.error('[HouseholdSwitcher] Failed to switch household:', err);
+    } finally {
+      setSwitchingTo(null);
+    }
   };
 
   if (!user) return null;
@@ -109,6 +108,7 @@ export default function HouseholdSwitcher() {
                           <button
                             key={household.householdId}
                             onClick={() => handleSwitchHousehold(household.householdId, household.householdName)}
+                            disabled={switchingTo === household.householdId}
                             className="w-full flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors text-left"
                           >
                             <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center flex-shrink-0">
@@ -122,9 +122,13 @@ export default function HouseholdSwitcher() {
                                 {household.members?.length || 0} {t('members', 'miembros')}
                               </div>
                             </div>
-                            <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
+                            {switchingTo === household.householdId ? (
+                              <div className="w-5 h-5 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin flex-shrink-0" />
+                            ) : (
+                              <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            )}
                           </button>
                         )
                       ))}

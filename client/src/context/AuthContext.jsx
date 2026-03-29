@@ -1,4 +1,5 @@
 import { createContext, useState, useEffect } from 'react';
+import api from '../services/api';
 
 export const AuthContext = createContext();
 
@@ -39,19 +40,29 @@ export function AuthProvider({ children }) {
     console.log('[AuthContext] Login complete, isAuthenticated:', !!authToken);
   };
 
-  const switchHousehold = (householdId, householdName) => {
-    if (user) {
-      const updatedUser = {
-        ...user,
-        householdId,
-        householdName
-      };
-      console.log('[Auth] BEFORE switchHousehold - user:', { currentHouseholdId: user.householdId, currentHouseholdName: user.householdName });
-      setUser(updatedUser);
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      const verify = localStorage.getItem('user');
-      console.log('[Auth] AFTER switchHousehold - localStorage:', { householdId, householdName, storedUser: JSON.parse(verify) });
-    }
+  const switchHousehold = async (householdId, householdName) => {
+    if (!user || !token) return null;
+
+    console.log('[Auth] Switching household:', {
+      fromHouseholdId: user.householdId,
+      toHouseholdId: householdId,
+      householdName,
+    });
+
+    const response = await api.post('/auth/switch-household', { householdId });
+    const nextUser = response.data?.user || {
+      ...user,
+      householdId,
+      householdName,
+    };
+    const nextToken = response.data?.accessToken || token;
+
+    setUser(nextUser);
+    setToken(nextToken);
+    localStorage.setItem('user', JSON.stringify(nextUser));
+    localStorage.setItem('token', nextToken);
+
+    return nextUser;
   };
 
   const logout = () => {

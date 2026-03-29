@@ -11,8 +11,7 @@ import {
   generateAuthenticationOptions,
   verifyAuthenticationResponse,
 } from '@simplewebauthn/server';
-import { generateToken, verifyToken } from '../middleware/auth.js';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, generateToken, verifyToken } from '../middleware/auth.js';
 import { TokenRotationService } from '../services/tokenRotationService.js';
 import { authSchemas, validateBody } from '../utils/validationSchemas.js';
 import User from '../models/User.js';
@@ -330,6 +329,55 @@ router.post('/refresh', validateBody(authSchemas.refresh), async (req, res, next
   } catch (error) {
     console.error('[AUTH] Token refresh error:', error.message);
     return res.status(401).json({ error: 'Invalid or expired refresh token' });
+  }
+});
+
+// Persist the active household selection and issue a fresh access token.
+router.post('/switch-household', authMiddleware, async (req, res, next) => {
+  try {
+    const targetHouseholdId = String(req.body?.householdId || '').trim();
+    if (!targetHouseholdId) {
+      return res.status(400).json({ error: 'householdId is required' });
+    }
+
+    const household = await Household.findOne({
+      householdId: targetHouseholdId,
+      'members.userId': req.user.userId,
+    });
+
+    if (!household) {
+      return res.status(403).json({ error: 'Not authorized for this household' });
+    }
+
+    const user = await User.findOne({ userId: req.user.userId });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    user.householdId = targetHouseholdId;
+    user.updatedAt = new Date();
+    await user.save();
+
+    const accessToken = TokenRotationService.generateAccessToken({
+      userId: user.userId,
+      email: user.email,
+      householdId: targetHouseholdId,
+      role: user.role,
+    });
+
+    res.json({
+      user: {
+        userId: user.userId,
+        email: user.email,
+        name: user.profile.name,
+        householdId: targetHouseholdId,
+        householdName: household.householdName,
+      },
+      accessToken,
+    });
+  } catch (error) {
+    console.error('[AUTH] Switch household error:', error.message);
+    next(error);
   }
 });
 
