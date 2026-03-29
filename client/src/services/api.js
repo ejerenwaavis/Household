@@ -11,10 +11,7 @@ const getAPIURL = () => {
     || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname);
 
   if (isLocal) {
-    // Always auto-detect on local — ignore any VITE_API_URL override so devs
-    // don't need to touch .env files when running locally
-    const port = import.meta.env.VITE_API_PORT || 4000;
-    return `${window.location.protocol}//${hostname}:${port}/api`;
+    return '/api';
   }
 
   // Production: use explicit override if set, otherwise rely on Apache reverse proxy
@@ -31,8 +28,22 @@ const api = axios.create({
 // Add token to requests and log all requests
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
+  const storedUser = localStorage.getItem('user');
+  let activeHouseholdId = null;
+
+  if (storedUser) {
+    try {
+      activeHouseholdId = JSON.parse(storedUser)?.householdId || null;
+    } catch {
+      activeHouseholdId = null;
+    }
+  }
+
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  if (activeHouseholdId) {
+    config.headers['X-Household-Id'] = activeHouseholdId;
   }
   
   // Log all requests for debugging
@@ -40,6 +51,7 @@ api.interceptors.request.use((config) => {
     method: config.method.toUpperCase(),
     url: config.baseURL + config.url,
     hasToken: !!token,
+    activeHouseholdId,
     data: config.data ? JSON.parse(JSON.stringify(config.data)) : null,
   });
   

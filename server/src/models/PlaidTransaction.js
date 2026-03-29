@@ -97,6 +97,41 @@ const plaidTransactionSchema = new mongoose.Schema({
     description: 'User-assigned category for better organization'
   },
 
+  transferDirection: {
+    type: String,
+    enum: ['in', 'out', 'unknown'],
+    default: 'unknown',
+    description: 'Direction of transfer flow for transfer-like transactions'
+  },
+
+  transferScope: {
+    type: String,
+    enum: ['same-household', 'external', 'unknown'],
+    default: 'unknown',
+    description: 'Whether transfer stays inside household-linked accounts or exits externally'
+  },
+
+  transferGroupId: {
+    type: String,
+    default: null,
+    index: true,
+    description: 'Shared identifier for paired transfer legs'
+  },
+
+  isInternalTransferNeutralized: {
+    type: Boolean,
+    default: false,
+    index: true,
+    description: 'True when this transaction is excluded from income/expense totals as an internal transfer'
+  },
+
+  transferClassificationSource: {
+    type: String,
+    enum: ['system_heuristic', 'manual_review', 'unknown'],
+    default: 'unknown',
+    description: 'How transfer classification was assigned'
+  },
+
   relatedExpenseId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Expense',
@@ -187,5 +222,7 @@ plaidTransactionSchema.index({ linkedAccountId: 1, date: -1 });
 plaidTransactionSchema.index({ isReconciled: 1, date: -1 });
 plaidTransactionSchema.index({ reconciliationReason: 1, date: -1 });
 plaidTransactionSchema.index({ primaryCategory: 1 });
+plaidTransactionSchema.index({ householdId: 1, isInternalTransferNeutralized: 1, date: -1 });
+plaidTransactionSchema.index({ householdId: 1, transferScope: 1, date: -1 });
 
 export default mongoose.model('PlaidTransaction', plaidTransactionSchema);

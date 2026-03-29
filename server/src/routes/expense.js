@@ -78,7 +78,13 @@ router.get('/:householdId/:month', authMiddleware, householdAuthMiddleware, asyn
     const { householdId, month } = req.params;
     const { lang = 'en' } = req.query; // Get language from query param
 
-    let { expenses, byCategory, total } = await getUnifiedMonthlyVariableExpenses(householdId, month);
+    let {
+      expenses,
+      byCategory,
+      total,
+      excludedInternalTransfers,
+      externalTransferOutflows,
+    } = await getUnifiedMonthlyVariableExpenses(householdId, month);
 
     // Add translations if language is Spanish
     if (lang === 'es') {
@@ -105,6 +111,8 @@ router.get('/:householdId/:month', authMiddleware, householdAuthMiddleware, asyn
       expenses,
       byCategory,
       total,
+      excludedInternalTransfers,
+      externalTransferOutflows,
     });
   } catch (error) {
     next(error);

@@ -6,8 +6,8 @@
 import { useCallback, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { usePlaidLink } from 'react-plaid-link';
-import api from '../services/api';
 import { useAuth } from '../hooks/useAuth';
+import api from '../services/api';
 
 const PlaidLink = ({ onSuccess, onExit }) => {
   const { user } = useAuth();

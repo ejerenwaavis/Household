@@ -4,7 +4,8 @@
  */
 
 import { Router } from 'express';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, resolveActiveHouseholdId } from '../middleware/auth.js';
+import { getMonthResetCutoff } from '../services/monthWorkspaceService.js';
 import PlaidService from '../services/plaidService.js';
 import LinkedAccount from '../models/LinkedAccount.js';
 import PlaidTransaction from '../models/PlaidTransaction.js';
@@ -23,7 +24,8 @@ const router = Router();
  */
 router.post('/create-link-token', authMiddleware, async (req, res, next) => {
   try {
-    const { userId, householdId } = req.user;
+    const { userId } = req.user;
+    const householdId = resolveActiveHouseholdId(req);
 
     // Require passkey OR MFA before allowing bank linking
     const user = await User.findOne({ userId });
@@ -61,7 +63,8 @@ router.post('/create-link-token', authMiddleware, async (req, res, next) => {
 router.post('/exchange-token', authMiddleware, async (req, res, next) => {
   try {
     const { publicToken, metadata } = req.body;
-    const { userId, householdId } = req.user;
+    const { userId } = req.user;
+    const householdId = resolveActiveHouseholdId(req);
 
     if (!publicToken) {
       return res.status(400).json({ error: 'Public token is required' });
@@ -137,7 +140,7 @@ router.post('/exchange-token', authMiddleware, async (req, res, next) => {
  */
 router.get('/linked-accounts', authMiddleware, async (req, res, next) => {
   try {
-    const { householdId } = req.user;
+    const householdId = resolveActiveHouseholdId(req);
 
     const linkedAccounts = await LinkedAccount.find({
       householdId,
@@ -157,7 +160,7 @@ router.get('/linked-accounts', authMiddleware, async (req, res, next) => {
 router.patch('/linked-accounts/:accountId', authMiddleware, async (req, res, next) => {
   try {
     const { accountId } = req.params;
-    const { householdId } = req.user;
+    const householdId = resolveActiveHouseholdId(req);
     const { accountType, accountSubtype, accountName } = req.body;
 
     const linkedAccount = await LinkedAccount.findOne({ _id: accountId, householdId, isActive: true });
@@ -185,7 +188,7 @@ router.patch('/linked-accounts/:accountId', authMiddleware, async (req, res, nex
 router.get('/account-balance/:accountId', authMiddleware, async (req, res, next) => {
   try {
     const { accountId } = req.params;
-    const { householdId } = req.user;
+    const householdId = resolveActiveHouseholdId(req);
 
     const linkedAccount = await LinkedAccount.findOne({
       _id: accountId,
@@ -236,7 +239,7 @@ router.get('/account-balance/:accountId', authMiddleware, async (req, res, next)
 router.delete('/unlink/:accountId', authMiddleware, async (req, res, next) => {
   try {
     const { accountId } = req.params;
-    const { householdId } = req.user;
+    const householdId = resolveActiveHouseholdId(req);
 
     const linkedAccount = await LinkedAccount.findOne({
       _id: accountId,
@@ -277,7 +280,7 @@ router.delete('/unlink/:accountId', authMiddleware, async (req, res, next) => {
 router.get('/sync-status/:accountId', authMiddleware, async (req, res, next) => {
   try {
     const { accountId } = req.params;
-    const { householdId } = req.user;
+    const householdId = resolveActiveHouseholdId(req);
 
     const linkedAccount = await LinkedAccount.findOne({
       _id: accountId,
@@ -315,7 +318,7 @@ router.get('/sync-status/:accountId', authMiddleware, async (req, res, next) => 
 router.post('/set-default/:accountId', authMiddleware, async (req, res, next) => {
   try {
     const { accountId } = req.params;
-    const { householdId } = req.user;
+    const householdId = resolveActiveHouseholdId(req);
 
     // Clear all existing defaults for this household
     await LinkedAccount.updateMany(
@@ -350,8 +353,9 @@ router.post('/set-default/:accountId', authMiddleware, async (req, res, next) =>
  */
 router.get('/transactions', authMiddleware, async (req, res, next) => {
   try {
-    const { householdId } = req.user;
+    const householdId = resolveActiveHouseholdId(req);
     const { accountId, month, limit = 50, offset = 0, isReconciled, isDuplicate } = req.query;
+    const resetCutoff = month ? await getMonthResetCutoff(householdId, month) : null;
 
     console.log('[Plaid Route] Fetching transactions', { householdId, accountId, month, limit, offset });
 
@@ -366,6 +370,9 @@ router.get('/transactions', authMiddleware, async (req, res, next) => {
       const startDate = new Date(year, monthNum - 1, 1);
       const endDate = new Date(year, monthNum, 0, 23, 59, 59);
       filter.date = { $gte: startDate, $lte: endDate };
+    }
+    if (resetCutoff) {
+      filter.createdAt = { $gte: resetCutoff };
     }
     if (isReconciled !== undefined) {
       filter.isReconciled = isReconciled === 'true';
@@ -411,7 +418,7 @@ router.get('/transactions', authMiddleware, async (req, res, next) => {
 router.get('/transactions/:transactionId', authMiddleware, async (req, res, next) => {
   try {
     const { transactionId } = req.params;
-    const { householdId } = req.user;
+    const householdId = resolveActiveHouseholdId(req);
 
     const transaction = await PlaidTransaction.findOne({
       _id: transactionId,
@@ -437,7 +444,7 @@ router.get('/transactions/:transactionId', authMiddleware, async (req, res, next
 router.patch('/transactions/:transactionId', authMiddleware, async (req, res, next) => {
   try {
     const { transactionId } = req.params;
-    const { householdId } = req.user;
+    const householdId = resolveActiveHouseholdId(req);
     const { userCategory, isReconciled, reconcilationNotes } = req.body;
 
     const existingTransaction = await PlaidTransaction.findOne({ _id: transactionId, householdId });
@@ -489,8 +496,9 @@ router.patch('/transactions/:transactionId', authMiddleware, async (req, res, ne
  */
 router.get('/transactions-summary', authMiddleware, async (req, res, next) => {
   try {
-    const { householdId } = req.user;
+    const householdId = resolveActiveHouseholdId(req);
     const { month, accountId } = req.query;
+    const resetCutoff = month ? await getMonthResetCutoff(householdId, month) : null;
 
     const filter = {
       householdId,
@@ -506,6 +514,9 @@ router.get('/transactions-summary', authMiddleware, async (req, res, next) => {
       const startDate = new Date(year, monthNum - 1, 1);
       const endDate = new Date(year, monthNum, 0, 23, 59, 59);
       filter.date = { $gte: startDate, $lte: endDate };
+    }
+    if (resetCutoff) {
+      filter.createdAt = { $gte: resetCutoff };
     }
 
     // Get aggregated statistics

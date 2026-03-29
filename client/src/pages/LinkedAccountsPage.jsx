@@ -148,6 +148,7 @@ function sanitizeAssignmentSettings(settings, changedField = null) {
 export default function LinkedAccountsPage() {
   const { token: authToken, user } = useAuth();
   const [linkedAccounts, setLinkedAccounts] = useState([]);
+  const [manualAccounts, setManualAccounts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
@@ -167,6 +168,10 @@ export default function LinkedAccountsPage() {
   useEffect(() => {
     fetchLinkedAccounts();
   }, []);
+
+  useEffect(() => {
+    fetchManualAccounts();
+  }, [user?.householdId]);
 
   useEffect(() => {
     fetchAssignmentTargets();
@@ -211,6 +216,18 @@ export default function LinkedAccountsPage() {
     }
   };
 
+  const fetchManualAccounts = async () => {
+    if (!user?.householdId) return;
+
+    try {
+      const response = await api.get(`/bank-transactions/${user.householdId}/accounts`);
+      setManualAccounts(response.data.accounts || []);
+    } catch (err) {
+      console.error('[LinkedAccounts] Manual account fetch error:', err);
+      setManualAccounts([]);
+    }
+  };
+
   const fetchAssignmentTargets = async () => {
     if (!user?.householdId) return;
     try {
@@ -232,6 +249,7 @@ export default function LinkedAccountsPage() {
     setTimeout(() => {
       fetchLinkedAccounts();
       fetchAssignmentTargets();
+      fetchManualAccounts();
     }, 1000);
   };
 
@@ -437,21 +455,26 @@ export default function LinkedAccountsPage() {
         )}
 
         <div className="mb-8">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">🏦 Bank Accounts</h1>
-              <p className="text-gray-600 dark:text-gray-400">Manage linked bank accounts, account classification, and routing into goals, liabilities, or credit cards.</p>
+              <p className="text-gray-600 dark:text-gray-400">Manage linked bank accounts, account classification, routing into goals, liabilities, or credit cards, and manually uploaded statement accounts.</p>
             </div>
-            {linkedAccounts.length > 0 && (
-              <button
-                onClick={handleSyncTransactions}
-                disabled={syncing}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
-              >
-                <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
-                {syncing ? 'Syncing...' : 'Sync Transactions'}
-              </button>
-            )}
+            <div className="flex items-center gap-3 flex-wrap">
+              <a href="/transactions/review" className="inline-flex items-center px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors text-sm font-medium">
+                Upload Transactions →
+              </a>
+              {linkedAccounts.length > 0 && (
+                <button
+                  onClick={handleSyncTransactions}
+                  disabled={syncing}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
+                  {syncing ? 'Syncing...' : 'Sync Transactions'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -731,6 +754,44 @@ export default function LinkedAccountsPage() {
             })
           )}
         </div>
+
+        {manualAccounts.length > 0 && (
+          <div className="mt-8 space-y-4">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Manually Added from Uploads</h2>
+            {manualAccounts.map((account) => (
+              <div key={account._id} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">{account.bankName}</h3>
+                      {account.accountMask && (
+                        <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-semibold rounded">••{account.accountMask}</span>
+                      )}
+                      <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-semibold rounded">Manual Upload</span>
+                    </div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      {account.accountName || 'Uploaded account'}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400">
+                      <span>{account.transactionCount || 0} imported transactions</span>
+                      <span>{account.sourceDocumentCount || 0} uploaded files</span>
+                      {account.lastImportedAt && <span>Last import: {new Date(account.lastImportedAt).toLocaleString()}</span>}
+                    </div>
+                    {account.linkedAccount && (
+                      <p className="mt-2 text-sm text-blue-600 dark:text-blue-400">
+                        Matched to linked account: {account.linkedAccount.accountName}{account.linkedAccount.accountMask ? ` ••${account.linkedAccount.accountMask}` : ''}
+                      </p>
+                    )}
+                  </div>
+
+                  <a href="/transactions/review" className="inline-flex items-center px-4 py-2 rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors text-sm font-medium self-start">
+                    Upload More Statements
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="mt-8 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
           <h3 className="font-bold text-blue-900 dark:text-blue-300 mb-2">About Bank Account Linking</h3>

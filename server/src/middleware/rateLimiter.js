@@ -6,6 +6,8 @@
 
 import rateLimit from 'express-rate-limit';
 
+const getHouseholdKey = (req) => req.activeHouseholdId || req.user?.activeHouseholdId || req.user?.householdId || req.ip;
+
 /**
  * General API rate limiter
  * 500 requests per 15 minutes per IP
@@ -98,7 +100,7 @@ export const uploadLimiter = rateLimit({
   legacyHeaders: false,
   skip: (req) => process.env.NODE_ENV === 'development',
   keyGenerator: (req) => {
-    return req.user?.householdId || req.ip;
+    return getHouseholdKey(req);
   }
 });
 
@@ -114,7 +116,7 @@ export const apiUserLimiter = rateLimit({
   legacyHeaders: false,
   skip: (req) => process.env.NODE_ENV === 'development' || !req.user,
   keyGenerator: (req) => {
-    return req.user?.householdId || req.ip;
+    return getHouseholdKey(req);
   }
 });
 
@@ -129,7 +131,7 @@ export const exportLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => process.env.NODE_ENV === 'development',
-  keyGenerator: (req) => req.user?.householdId || req.ip
+  keyGenerator: (req) => getHouseholdKey(req)
 });
 
 /**
@@ -143,7 +145,7 @@ export const inviteLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => process.env.NODE_ENV === 'development',
-  keyGenerator: (req) => req.user?.householdId || req.ip
+  keyGenerator: (req) => getHouseholdKey(req)
 });
 
 export default {

@@ -71,17 +71,18 @@ export const securityHeaders = (req, res, next) => {
 /**
  * Enhanced CORS configuration with comprehensive security
  */
+const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+const adminUrl = process.env.ADMIN_URL || 'http://localhost:3000';
+
 export const corsConfig = {
   origin: function (origin, callback) {
     const allowedOrigins = [
-      process.env.FRONTEND_URL || 'http://localhost:5173',
-      process.env.ADMIN_URL || 'http://localhost:3000',
+      frontendUrl,
+      adminUrl,
       'http://localhost:5173',
-      'http://localhost:5000',
+      'http://localhost:5174',
       'http://127.0.0.1:5173',
-      'http://127.0.0.1:5000',
-      'http://10.221.178.187:5173',
-      'http://10.221.178.187:5000',
+      'http://127.0.0.1:5174',
     ];
 
     // Add production origins if configured

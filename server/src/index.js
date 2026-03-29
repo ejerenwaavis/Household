@@ -42,12 +42,12 @@ import debtPaymentRouter from './routes/debtPayment.js';
 import creditCardStatementRouter from './routes/creditCardStatement.js';
 import taskReminderRouter from './routes/taskReminder.js';
 import plaidRouter from './routes/plaid.js';
+import statementRouter from './routes/statement.js';
+import bankTransactionRouter from './routes/bankTransaction.js';
 import subscriptionRouter from './routes/subscription.js';
 import insightsRouter from './routes/insights.js';
 import onboardingRouter from './routes/onboarding.js';
 import receiptRouter from './routes/receipt.js';
-import statementRouter from './routes/statement.js';
-import bankTransactionRouter from './routes/bankTransaction.js';
 import paymentSuggestionRouter from './routes/paymentSuggestion.js';
 import webhookRouter from './routes/webhook.js';
 
@@ -168,12 +168,12 @@ app.use('/api/debt-payments', createLimiter, debtPaymentRouter);
 app.use('/api/credit-card-statements', createLimiter, creditCardStatementRouter);
 app.use('/api/tasks', createLimiter, taskReminderRouter);
 app.use('/api/plaid', createLimiter, plaidRouter);
+app.use('/api/statements', statementRouter);
+app.use('/api/bank-transactions', createLimiter, bankTransactionRouter);
 app.use('/api/subscription', createLimiter, subscriptionRouter);
 app.use('/api/insights', createLimiter, insightsRouter);
 app.use('/api/onboarding', createLimiter, onboardingRouter);
 app.use('/api/receipts', createLimiter, receiptRouter);
-app.use('/api/statements', createLimiter, statementRouter);
-app.use('/api/bank-transactions', createLimiter, bankTransactionRouter);
 app.use('/api/payment-suggestions', createLimiter, paymentSuggestionRouter);
 
 // ============================================================

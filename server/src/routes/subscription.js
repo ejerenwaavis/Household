@@ -4,7 +4,7 @@
  */
 
 import { Router } from 'express';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, resolveActiveHouseholdId } from '../middleware/auth.js';
 import { requireFeature } from '../middleware/featureGate.js';
 import * as StripeService from '../services/stripeService.js';
 import Subscription from '../models/Subscription.js';
@@ -18,7 +18,8 @@ router.use(authMiddleware);
 // GET /api/subscription — Get current subscription
 router.get('/', async (req, res) => {
   try {
-    const sub = await StripeService.getSubscription(req.user.householdId);
+    const householdId = resolveActiveHouseholdId(req);
+    const sub = await StripeService.getSubscription(householdId);
     const plan = StripeService.PLANS[sub.plan?.type || 'free'];
     res.json({ subscription: sub, plan, plans: Object.values(StripeService.PLANS) });
   } catch (err) {
@@ -36,15 +37,16 @@ router.get('/plans', async (req, res) => {
 router.post('/checkout', async (req, res) => {
   try {
     const { planId } = req.body;
+    const householdId = resolveActiveHouseholdId(req);
     if (!planId || planId === 'free') {
       return res.status(400).json({ error: 'Select a paid plan to upgrade' });
     }
 
-    const household = await Household.findOne({ householdId: req.user.householdId });
+    const household = await Household.findOne({ householdId });
     const owner = household?.members?.find(m => m.role === 'owner') || household?.members?.[0];
 
     const session = await StripeService.createCheckoutSession({
-      householdId: req.user.householdId,
+      householdId,
       planId,
       email: owner?.email || req.user.email,
       name: owner?.name || 'Household',
@@ -62,8 +64,9 @@ router.post('/checkout', async (req, res) => {
 // POST /api/subscription/portal — Create Stripe billing portal session
 router.post('/portal', async (req, res) => {
   try {
+    const householdId = resolveActiveHouseholdId(req);
     const session = await StripeService.createPortalSession(
-      req.user.householdId,
+      householdId,
       req.body.returnUrl
     );
     res.json({ url: session.url });
@@ -76,7 +79,8 @@ router.post('/portal', async (req, res) => {
 // POST /api/subscription/cancel — Cancel at period end
 router.post('/cancel', async (req, res) => {
   try {
-    await StripeService.cancelSubscription(req.user.householdId);
+    const householdId = resolveActiveHouseholdId(req);
+    await StripeService.cancelSubscription(householdId);
     res.json({ success: true, message: 'Subscription will cancel at end of billing period.' });
   } catch (err) {
     console.error('[Subscription Cancel]', err.message);
@@ -87,7 +91,8 @@ router.post('/cancel', async (req, res) => {
 // POST /api/subscription/reactivate — Undo cancellation
 router.post('/reactivate', async (req, res) => {
   try {
-    await StripeService.reactivateSubscription(req.user.householdId);
+    const householdId = resolveActiveHouseholdId(req);
+    await StripeService.reactivateSubscription(householdId);
     res.json({ success: true, message: 'Subscription reactivated.' });
   } catch (err) {
     console.error('[Subscription Reactivate]', err.message);
