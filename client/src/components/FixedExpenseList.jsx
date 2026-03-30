@@ -130,7 +130,7 @@ export default function FixedExpenseList({ householdId, byGroup = {}, total = 0,
                 const paidAmount = expensePayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
                 const isPaid = paidAmount >= Number(e.amount);
                 const remaining = Math.max(0, Number(e.amount) - paidAmount);
-                const autoPaidPayment = expensePayments.find((payment) => payment.source === 'plaid_auto');
+                const autoPaidPayment = expensePayments.find((payment) => payment.source === 'plaid_auto' || payment.source === 'bank_auto');
                 
                 console.log('[FixedExpenseList] expense:', displayName, { expenseId, totalPayments: payments.length, matchingPayments: expensePayments.length, paidAmount, expenseAmount: Number(e.amount), isPaid });
 
@@ -152,7 +152,7 @@ export default function FixedExpenseList({ householdId, byGroup = {}, total = 0,
                         </div>
                         {autoPaidPayment && (
                           <div className="text-xs text-green-600 dark:text-green-400 mt-1">
-                            {t('Auto-paid by bank transaction', 'Pagado automáticamente por transacción bancaria')}
+                            {t('Auto-paid by matched transaction', 'Pagado automáticamente por transacción coincidente')}
                           </div>
                         )}
                         {paidAmount > 0 && !isPaid && (
@@ -213,26 +213,52 @@ export default function FixedExpenseList({ householdId, byGroup = {}, total = 0,
                 <div>
                   <div className="text-sm font-medium text-gray-900 dark:text-white">{candidate.fixedExpenseName}</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">
-                    {candidate.transactionName} · ${Number(candidate.transactionAmount).toFixed(2)} · {t('Expected', 'Esperado')} ${Number(candidate.expectedAmount).toFixed(2)} · {candidate.confidence}%
+                    {candidate.transactionName} · ${Number(candidate.transactionAmount).toFixed(2)} · {t('Expected', 'Esperado')} ${Number(candidate.expectedAmount).toFixed(2)} · {candidate.confidence}% · {candidate.transactionType === 'bank' ? t('Uploaded', 'Subido') : 'Plaid'}
                   </div>
                 </div>
-                <button
-                  onClick={async () => {
-                    try {
-                      await api.post(`/fixed-expense-payments/${householdId}/confirm-candidate`, {
-                        fixedExpenseId: candidate.fixedExpenseId,
-                        plaidTransactionId: candidate.plaidTransactionId,
-                      });
-                      refresh && refresh();
-                    } catch (err) {
-                      console.error('[FixedExpenseList] confirm candidate error', err);
-                      alert(err?.response?.data?.error || 'Failed to confirm candidate');
-                    }
-                  }}
-                  className="shrink-0 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-                >
-                  {t('Confirm', 'Confirmar')}
-                </button>
+                <div className="shrink-0 flex items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      try {
+                        await api.post(`/fixed-expense-payments/${householdId}/reject-candidate`, {
+                          fixedExpenseId: candidate.fixedExpenseId,
+                          transactionType: candidate.transactionType || 'plaid',
+                          transactionId: candidate.transactionId || candidate.plaidTransactionId,
+                          confidence: candidate.confidence,
+                          reasons: candidate.reasons || {},
+                          reason: 'user_rejected',
+                        });
+                        fetchReviewCandidates();
+                      } catch (err) {
+                        console.error('[FixedExpenseList] reject candidate error', err);
+                        alert(err?.response?.data?.error || 'Failed to reject candidate');
+                      }
+                    }}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    {t('Reject', 'Rechazar')}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await api.post(`/fixed-expense-payments/${householdId}/confirm-candidate`, {
+                          fixedExpenseId: candidate.fixedExpenseId,
+                          transactionType: candidate.transactionType || 'plaid',
+                          transactionId: candidate.transactionId || candidate.plaidTransactionId,
+                          confidence: candidate.confidence,
+                          reasons: candidate.reasons || {},
+                        });
+                        refresh && refresh();
+                      } catch (err) {
+                        console.error('[FixedExpenseList] confirm candidate error', err);
+                        alert(err?.response?.data?.error || 'Failed to confirm candidate');
+                      }
+                    }}
+                    className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                  >
+                    {t('Confirm', 'Confirmar')}
+                  </button>
+                </div>
               </div>
             ))}
           </div>

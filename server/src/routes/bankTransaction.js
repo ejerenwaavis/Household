@@ -453,6 +453,43 @@ router.delete('/:householdId/:id', authMiddleware, householdAuthMiddleware, asyn
   }
 });
 
+router.patch('/:householdId/:id', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId, id } = req.params;
+    const { category, assignedFixedExpenseId } = req.body;
+
+    const transaction = await BankTransaction.findOne({ _id: id, householdId });
+    if (!transaction) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+
+    if (typeof category === 'string' && category.trim()) {
+      transaction.category = category.trim();
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body, 'assignedFixedExpenseId')) {
+      if (
+        assignedFixedExpenseId === null
+        || (typeof assignedFixedExpenseId === 'string' && (
+          assignedFixedExpenseId.trim() === ''
+          || assignedFixedExpenseId.trim().toLowerCase() === 'none'
+        ))
+      ) {
+        transaction.assignedFixedExpenseId = null;
+      } else {
+        transaction.assignedFixedExpenseId = assignedFixedExpenseId;
+      }
+    }
+
+    transaction.updatedAt = new Date();
+    await transaction.save();
+
+    res.json({ transaction });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Find transfer candidates for a given amount/date (used by review UI)
 router.get('/:householdId/transfer-candidates', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
   try {

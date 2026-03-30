@@ -24,6 +24,12 @@ const bankTransactionSchema = new mongoose.Schema({
   amount: { type: Number, default: 0 },
   type: { type: String, enum: ['debit', 'credit'], default: 'debit' },
   category: { type: String, default: 'Other' },
+  assignedFixedExpenseId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'FixedExpense',
+    default: null,
+    index: true,
+  },
 
   bank: { type: String, default: '' },
   accountName: { type: String, default: '' },
