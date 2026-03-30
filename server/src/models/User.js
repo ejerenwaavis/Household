@@ -36,6 +36,9 @@ const userSchema = new mongoose.Schema({
   emailVerifyToken: { type: String, default: null },
   emailVerifyExpires: { type: Date, default: null },
   emailFrozenAt: { type: Date, default: null }, // set when account is frozen (7 days after register)
+  isDisabled: { type: Boolean, default: false, index: true },
+  disabledAt: { type: Date, default: null },
+  disableReason: { type: String, default: '' },
   passkeys: [{
     credentialID: { type: String, required: true },
     publicKey: { type: String, required: true },

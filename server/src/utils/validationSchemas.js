@@ -81,9 +81,7 @@ export const authSchemas = {
 
   // Refresh token validation
   refresh: Joi.object({
-    refreshToken: Joi.string().required().messages({
-      'any.required': 'Refresh token is required'
-    })
+    refreshToken: Joi.string().optional()
   }).unknown(false),
 
   // Change password validation

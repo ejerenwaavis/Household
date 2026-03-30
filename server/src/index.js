@@ -64,8 +64,42 @@ import DebtPayment from './models/DebtPayment.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+const isProduction = process.env.NODE_ENV === 'production';
 
 const ts = () => `[${new Date().toISOString()}]`;
+
+function maskMongoUri(uri = '') {
+  if (!uri) return '';
+
+  try {
+    // URL works for mongodb+srv URIs and most mongodb:// URIs.
+    const parsed = new URL(uri);
+    if (parsed.username || parsed.password) {
+      parsed.username = '***';
+      parsed.password = '***';
+    }
+    return parsed.toString();
+  } catch {
+    return String(uri).replace(/:\/\/([^@]+)@/, '://***:***@');
+  }
+}
+
+function getMongoConfig() {
+  const uri = process.env.MONGO_URI || 'mongodb://localhost:27017/household';
+  const isSrvUri = uri.startsWith('mongodb+srv://');
+  const options = {
+    ssl: isProduction || isSrvUri,
+    tls: isProduction || isSrvUri,
+    authSource: process.env.MONGO_AUTH_SOURCE || (isProduction || isSrvUri ? 'admin' : undefined),
+    serverSelectionTimeoutMS: 10000,
+  };
+
+  if (isProduction && !uri.startsWith('mongodb+srv://')) {
+    throw new Error('Production MongoDB connection must use mongodb+srv:// with TLS enabled.');
+  }
+
+  return { uri, options };
+}
 
 console.log(`${ts()} 🟢 Server process starting (NODE_ENV=${process.env.NODE_ENV || 'development'})`);
 
@@ -110,7 +144,11 @@ app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(specs, {
 // ============================================================
 // Database Connection
 // ============================================================
-mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/household')
+const mongoConfig = getMongoConfig();
+
+console.log(`${ts()} 🔐 MongoDB target: ${maskMongoUri(mongoConfig.uri)}`);
+
+mongoose.connect(mongoConfig.uri, mongoConfig.options)
   .then(() => {
     console.log(`${ts()} ✅ MongoDB connected`);
     
