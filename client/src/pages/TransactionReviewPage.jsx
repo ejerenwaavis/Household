@@ -4,6 +4,14 @@ import { useAuth } from '../hooks/useAuth';
 import api from '../services/api';
 
 const fmtCurrency = (value) => `$${(Number(value) || 0).toFixed(2)}`;
+const TRANSACTION_CATEGORIES = ['Groceries', 'Dining', 'Gas', 'Medical', 'Shopping', 'Transportation', 'Subscriptions', 'Utilities', 'Housing', 'Transfer', 'Income', 'Other'];
+
+function fmtSignedTransactionAmount(transaction) {
+  const rawAmount = Number(transaction?.amount) || 0;
+  const magnitude = Math.abs(rawAmount);
+  const isCredit = transaction?.type === 'credit' || (!transaction?.type && rawAmount < 0);
+  return `${isCredit ? '+' : '-'}$${magnitude.toFixed(2)}`;
+}
 
 function currentMonth() {
   const date = new Date();
@@ -135,11 +143,15 @@ export default function TransactionReviewPage() {
   const [error, setError] = useState(null);
   const [linkedAccounts, setLinkedAccounts] = useState([]);
   const [manualAccounts, setManualAccounts] = useState([]);
+  const [fixedExpenses, setFixedExpenses] = useState([]);
   const [savedTransactions, setSavedTransactions] = useState([]);
   const [syncedTransactions, setSyncedTransactions] = useState([]);
   const [uploadFiles, setUploadFiles] = useState([]);
   const [reviewGroups, setReviewGroups] = useState([]);
   const [expandedGroups, setExpandedGroups] = useState({});
+  const [showUploadTool, setShowUploadTool] = useState(false);
+  const [importedEditMode, setImportedEditMode] = useState(false);
+  const [importedDrafts, setImportedDrafts] = useState({});
   const [uploading, setUploading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
@@ -151,15 +163,17 @@ export default function TransactionReviewPage() {
     setError(null);
     try {
       const householdId = user.householdId;
-      const [linkedRes, manualRes, savedRes, syncedRes] = await Promise.all([
+      const [linkedRes, manualRes, fixedRes, savedRes, syncedRes] = await Promise.all([
         api.get('/plaid/linked-accounts').catch(() => ({ data: { linkedAccounts: [] } })),
         api.get(`/bank-transactions/${householdId}/accounts`).catch(() => ({ data: { accounts: [] } })),
+        api.get(`/fixed-expenses/${householdId}`).catch(() => ({ data: { expenses: [] } })),
         api.get(`/bank-transactions/${householdId}?month=${selectedMonth}&limit=500`).catch(() => ({ data: { transactions: [] } })),
         api.get(`/plaid/transactions?month=${selectedMonth}&limit=250`).catch(() => ({ data: { transactions: [] } })),
       ]);
 
       setLinkedAccounts(linkedRes.data.linkedAccounts || []);
       setManualAccounts(manualRes.data.accounts || []);
+      setFixedExpenses(fixedRes.data.expenses || []);
       setSavedTransactions(savedRes.data.transactions || []);
       setSyncedTransactions(syncedRes.data.transactions || []);
     } catch (requestError) {
@@ -208,6 +222,7 @@ export default function TransactionReviewPage() {
 
     setUploadFiles((current) => [...current, ...pendingEntries]);
     setImportResult(null);
+    setShowUploadTool(true);
     setUploading(true);
 
     try {
@@ -447,6 +462,121 @@ export default function TransactionReviewPage() {
     }
   };
 
+  const upsertImportedDraft = (transaction, patch) => {
+    setImportedDrafts((current) => {
+      const existing = current[transaction._id] || {
+        category: transaction.category || 'Other',
+        assignedFixedExpenseId: transaction.assignedFixedExpenseId || '',
+        saving: false,
+      };
+
+      return {
+        ...current,
+        [transaction._id]: {
+          ...existing,
+          ...patch,
+        },
+      };
+    });
+  };
+
+  const clearImportedDraft = (transactionId) => {
+    setImportedDrafts((current) => {
+      const next = { ...current };
+      delete next[transactionId];
+      return next;
+    });
+  };
+
+  const getAssignedExpenseName = (transaction) => {
+    const assignedId = String(transaction.assignedFixedExpenseId || '');
+    if (!assignedId) return '—';
+    const expense = fixedExpenses.find((item) => String(item._id) === assignedId);
+    return expense?.name || '—';
+  };
+
+  const saveImportedTransaction = async (transaction) => {
+    if (!user?.householdId) return;
+    const draft = importedDrafts[transaction._id];
+    if (!draft) return;
+
+    upsertImportedDraft(transaction, { saving: true });
+
+    try {
+      const payload = {
+        category: draft.category,
+        assignedFixedExpenseId: draft.assignedFixedExpenseId || null,
+      };
+
+      const response = await api.patch(`/bank-transactions/${user.householdId}/${transaction._id}`, payload);
+      const updated = response.data.transaction;
+
+      setSavedTransactions((current) => current.map((row) => (
+        row._id === transaction._id ? { ...row, ...updated } : row
+      )));
+
+      clearImportedDraft(transaction._id);
+    } catch (saveError) {
+      console.error('[TransactionReviewPage] save imported transaction error:', saveError);
+      upsertImportedDraft(transaction, { saving: false });
+    }
+  };
+
+  const createFixedExpenseFromTransaction = async (transaction) => {
+    if (!user?.householdId) return null;
+
+    const fallbackName = (transaction.description || 'New Fixed Expense').split(' ').slice(0, 4).join(' ');
+    const name = window.prompt('Name for new fixed expense:', fallbackName || 'New Fixed Expense');
+    if (!name || !name.trim()) return null;
+
+    const defaultAmount = Math.abs(Number(transaction.amount) || 0).toFixed(2);
+    const amountInput = window.prompt('Monthly amount:', defaultAmount);
+    if (!amountInput) return null;
+
+    const amount = Number(amountInput);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert('Please enter a valid amount greater than zero.');
+      return null;
+    }
+
+    const dueDayInput = window.prompt('Due day (1-31):', '1');
+    const parsedDueDay = Number(dueDayInput);
+    const dueDay = Number.isFinite(parsedDueDay) && parsedDueDay >= 1 && parsedDueDay <= 31 ? parsedDueDay : 1;
+
+    try {
+      const response = await api.post(`/fixed-expenses/${user.householdId}`, {
+        name: name.trim(),
+        amount,
+        group: 'Other',
+        frequency: 'monthly',
+        dueDay,
+        merchantAliases: transaction.description ? [transaction.description] : [],
+      });
+
+      const createdExpense = response?.data?.expense;
+      if (!createdExpense?._id) return null;
+
+      setFixedExpenses((current) => [...current, createdExpense].sort((left, right) => String(left.name || '').localeCompare(String(right.name || ''))));
+      return String(createdExpense._id);
+    } catch (creationError) {
+      console.error('[TransactionReviewPage] create fixed expense error:', creationError);
+      alert(creationError?.response?.data?.error || 'Failed to create fixed expense.');
+      return null;
+    }
+  };
+
+  const handleAssignedExpenseChange = async (transaction, value) => {
+    if (value !== '__create_new__') {
+      upsertImportedDraft(transaction, { assignedFixedExpenseId: value });
+      return;
+    }
+
+    const createdExpenseId = await createFixedExpenseFromTransaction(transaction);
+    if (createdExpenseId) {
+      upsertImportedDraft(transaction, { assignedFixedExpenseId: createdExpenseId });
+    }
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -495,6 +625,12 @@ export default function TransactionReviewPage() {
             >
               Upload Statements
             </button>
+            <button
+              onClick={() => setShowUploadTool((current) => !current)}
+              className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+            >
+              {showUploadTool ? 'Hide Upload Tool' : 'Show Upload Tool'}
+            </button>
           </div>
         </div>
 
@@ -523,7 +659,7 @@ export default function TransactionReviewPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700 overflow-hidden">
+        <div className={`rounded-2xl border border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700 overflow-hidden ${showUploadTool ? '' : 'hidden'}`}>
           <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="font-semibold text-gray-900 dark:text-gray-100">Upload Queue</h2>
@@ -582,7 +718,7 @@ export default function TransactionReviewPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700 overflow-hidden">
+        <div className={`rounded-2xl border border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700 overflow-hidden ${showUploadTool ? '' : 'hidden'}`}>
           <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="font-semibold text-gray-900 dark:text-gray-100">Grouped Review</h2>
@@ -753,7 +889,7 @@ export default function TransactionReviewPage() {
                                   onChange={(event) => updateTransactionCategory(group.accountIdentityKey, transaction.rowId, event.target.value)}
                                   className="px-2 py-1 rounded border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-700"
                                 >
-                                  {['Groceries', 'Dining', 'Gas', 'Medical', 'Shopping', 'Transportation', 'Subscriptions', 'Utilities', 'Housing', 'Transfer', 'Income', 'Other'].map((category) => (
+                                  {TRANSACTION_CATEGORIES.map((category) => (
                                     <option key={category} value={category}>{category}</option>
                                   ))}
                                 </select>
@@ -766,7 +902,9 @@ export default function TransactionReviewPage() {
                                     Mark as transfer
                                   </button>
                                 </td>
-                              <td className="px-4 py-2 text-right font-semibold text-gray-900 dark:text-gray-100">{fmtCurrency(transaction.amount)}</td>
+                              <td className={`px-4 py-2 text-right font-semibold ${transaction.type === 'credit' ? 'text-green-700' : 'text-red-700'}`}>
+                                {fmtSignedTransactionAmount(transaction)}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -780,10 +918,24 @@ export default function TransactionReviewPage() {
           </div>
         </div>
 
+        {!showUploadTool && (
+          <div className="rounded-2xl border border-gray-200 bg-white px-5 py-6 text-sm text-gray-600">
+            Upload tool is hidden. Click "Show Upload Tool" to open Upload Queue and Grouped Review.
+          </div>
+        )}
+
         <div className="rounded-2xl border border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-            <h2 className="font-semibold text-gray-900 dark:text-gray-100">Imported Transactions for {selectedMonth}</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Manual imports stay separate from Plaid but are matched against linked accounts during import.</p>
+          <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="font-semibold text-gray-900 dark:text-gray-100">Imported Transactions for {selectedMonth}</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Manual imports stay separate from Plaid but are matched against linked accounts during import.</p>
+            </div>
+            <button
+              onClick={() => setImportedEditMode((current) => !current)}
+              className="px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100"
+            >
+              {importedEditMode ? 'Done Editing' : 'Enable Edit'}
+            </button>
           </div>
 
           <div className="overflow-x-auto">
@@ -795,28 +947,87 @@ export default function TransactionReviewPage() {
                   <th className="px-4 py-3 text-left">Account</th>
                   <th className="px-4 py-3 text-left">Description</th>
                   <th className="px-4 py-3 text-left">Category</th>
+                  <th className="px-4 py-3 text-left">Assigned Expense</th>
+                  <th className="px-4 py-3 text-left">Actions</th>
                   <th className="px-4 py-3 text-right">Amount</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {savedTransactions.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                    <td colSpan={8} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
                       No imported transactions saved for this month yet.
                     </td>
                   </tr>
-                ) : savedTransactions.map((transaction) => (
-                  <tr key={transaction._id} className="hover:bg-gray-50 dark:hover:bg-gray-900/20">
-                    <td className="px-4 py-2">{transaction.date || '—'}</td>
-                    <td className="px-4 py-2">{transaction.bank || 'Uploaded Bank'}</td>
-                    <td className="px-4 py-2">
-                      {transaction.linkedAccount?.accountName || transaction.manualAccount?.accountName || transaction.manualAccount?.bankName || (transaction.accountMask ? `••${transaction.accountMask}` : '—')}
-                    </td>
-                    <td className="px-4 py-2">{transaction.description}</td>
-                    <td className="px-4 py-2">{transaction.category}</td>
-                    <td className="px-4 py-2 text-right font-semibold">{fmtCurrency(transaction.amount)}</td>
-                  </tr>
-                ))}
+                ) : savedTransactions.map((transaction) => {
+                  const draft = importedDrafts[transaction._id] || null;
+                  const isSaving = Boolean(draft?.saving);
+                  const hasDraft = Boolean(draft);
+                  const draftCategory = draft?.category || transaction.category || 'Other';
+                  const draftAssignedExpenseId = draft?.assignedFixedExpenseId ?? (transaction.assignedFixedExpenseId || '');
+
+                  return (
+                    <tr key={transaction._id} className="hover:bg-gray-50 dark:hover:bg-gray-900/20">
+                      <td className="px-4 py-2">{transaction.date || '—'}</td>
+                      <td className="px-4 py-2">{transaction.bank || 'Uploaded Bank'}</td>
+                      <td className="px-4 py-2">
+                        {transaction.linkedAccount?.accountName || transaction.manualAccount?.accountName || transaction.manualAccount?.bankName || (transaction.accountMask ? `••${transaction.accountMask}` : '—')}
+                      </td>
+                      <td className="px-4 py-2">{transaction.description}</td>
+                      <td className="px-4 py-2">
+                        {importedEditMode ? (
+                          <select
+                            value={draftCategory}
+                            onChange={(event) => upsertImportedDraft(transaction, { category: event.target.value })}
+                            className="px-2 py-1 rounded border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-700"
+                          >
+                            {TRANSACTION_CATEGORIES.map((category) => (
+                              <option key={category} value={category}>{category}</option>
+                            ))}
+                          </select>
+                        ) : (transaction.category || 'Other')}
+                      </td>
+                      <td className="px-4 py-2">
+                        {importedEditMode ? (
+                          <select
+                            value={draftAssignedExpenseId}
+                            onChange={(event) => handleAssignedExpenseChange(transaction, event.target.value)}
+                            className="px-2 py-1 rounded border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-700"
+                          >
+                            <option value="">None</option>
+                            <option value="__create_new__">+ Create new fixed expense...</option>
+                            {fixedExpenses.map((expense) => (
+                              <option key={expense._id} value={expense._id}>{expense.name}</option>
+                            ))}
+                          </select>
+                        ) : getAssignedExpenseName(transaction)}
+                      </td>
+                      <td className="px-4 py-2">
+                        {importedEditMode ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => saveImportedTransaction(transaction)}
+                              disabled={!hasDraft || isSaving}
+                              className="px-2 py-1 rounded bg-indigo-600 text-white text-xs hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                              {isSaving ? 'Saving...' : 'Save'}
+                            </button>
+                            <button
+                              onClick={() => clearImportedDraft(transaction._id)}
+                              disabled={!hasDraft || isSaving}
+                              className="px-2 py-1 rounded border border-gray-300 text-gray-700 text-xs hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              Reset
+                            </button>
+                          </div>
+                        ) : '—'}
+                      </td>
+                      <td className={`px-4 py-2 text-right font-semibold ${transaction.type === 'credit' ? 'text-green-700' : 'text-red-700'}`}>
+                        {fmtSignedTransactionAmount(transaction)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

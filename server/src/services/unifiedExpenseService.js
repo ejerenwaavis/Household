@@ -1,5 +1,6 @@
 import Expense from '../models/Expense.js';
 import PlaidTransaction from '../models/PlaidTransaction.js';
+import BankTransaction from '../models/BankTransaction.js';
 import FixedExpense from '../models/FixedExpense.js';
 import {
   createdAtAfterReset,
@@ -73,29 +74,50 @@ function getAdjacentDateKeys(dateValue) {
   return [getDateKey(previous), getDateKey(date), getDateKey(next)];
 }
 
+function getTransactionDateValue(transaction) {
+  return transaction.dateISO || transaction.date || transaction.createdAt || transaction.importedAt;
+}
+
+function getTransactionDirection(transaction) {
+  if (transaction.type === 'debit') return 'out';
+  if (transaction.type === 'credit') return 'in';
+  return Number(transaction.amount || 0) > 0 ? 'out' : 'in';
+}
+
+function getTransactionAccountKey(transaction) {
+  return String(transaction.linkedAccountId || transaction.manualAccountId || transaction.accountIdentityKey || '');
+}
+
 function buildInternalTransferIdSet(transactions = []) {
   const candidateBuckets = new Map();
   const matchedIds = new Set();
 
   for (const transaction of transactions) {
+    const txId = String(transaction._id);
+    if (transaction.isInternalTransferNeutralized || transaction.transferScope === 'same-household') {
+      matchedIds.add(txId);
+    }
+
     if (!isLikelyTransferDescriptor(transaction)) continue;
 
     const amountCents = Math.abs(roundAmountToCents(transaction.amount));
     if (!amountCents) continue;
 
-    const currentSign = Number(transaction.amount || 0) > 0 ? 'out' : 'in';
-    const counterSign = currentSign === 'out' ? 'in' : 'out';
-    const linkedAccountId = String(transaction.linkedAccountId || '');
-    const txId = String(transaction._id);
+    const dateValue = getTransactionDateValue(transaction);
+    if (!dateValue) continue;
 
-    for (const dateKey of getAdjacentDateKeys(transaction.date)) {
+    const currentSign = getTransactionDirection(transaction);
+    const counterSign = currentSign === 'out' ? 'in' : 'out';
+    const accountKey = getTransactionAccountKey(transaction);
+
+    for (const dateKey of getAdjacentDateKeys(dateValue)) {
       const bucketKey = `${amountCents}:${dateKey}:${counterSign}`;
       const candidates = candidateBuckets.get(bucketKey) || [];
 
       const match = candidates.find((candidate) => {
         if (candidate.txId === txId) return false;
-        if (!candidate.linkedAccountId || !linkedAccountId) return false;
-        if (candidate.linkedAccountId === linkedAccountId) return false;
+        if (!candidate.accountKey || !accountKey) return false;
+        if (candidate.accountKey === accountKey) return false;
         return true;
       });
 
@@ -106,13 +128,10 @@ function buildInternalTransferIdSet(transactions = []) {
       }
     }
 
-    const ownDateKey = getDateKey(transaction.date);
+    const ownDateKey = getDateKey(dateValue);
     const ownBucketKey = `${amountCents}:${ownDateKey}:${currentSign}`;
     if (!candidateBuckets.has(ownBucketKey)) candidateBuckets.set(ownBucketKey, []);
-    candidateBuckets.get(ownBucketKey).push({
-      txId,
-      linkedAccountId,
-    });
+    candidateBuckets.get(ownBucketKey).push({ txId, accountKey });
   }
 
   return matchedIds;
@@ -195,6 +214,30 @@ function toUnifiedPlaidExpense(transaction) {
   };
 }
 
+function toUnifiedBankExpense(transaction) {
+  const date = new Date(transaction.dateISO || transaction.date || transaction.createdAt);
+
+  return {
+    _id: transaction._id,
+    householdId: transaction.householdId,
+    userId: transaction.importedBy,
+    contributorName: transaction.accountName || transaction.bank || 'Uploaded statement',
+    amount: Math.abs(Number(transaction.amount || 0)),
+    category: transaction.category || 'Other',
+    description: transaction.description || 'Uploaded transaction',
+    date,
+    week: getWeekOfMonth(date),
+    month: transaction.month || getMonthString(date),
+    source: 'bank_upload',
+    autoImported: true,
+    linkedTransactionId: transaction._id,
+    createdAt: transaction.createdAt || transaction.importedAt || date,
+    isSynced: true,
+    canEdit: false,
+    canDelete: false,
+  };
+}
+
 export async function getUnifiedMonthlyVariableExpenses(householdId, month) {
   const { start, end } = getMonthRange(month);
   const resetCutoff = await getMonthResetCutoff(householdId, month);
@@ -209,20 +252,35 @@ export async function getUnifiedMonthlyVariableExpenses(householdId, month) {
     isPending: { $ne: true },
     isDuplicate: { $ne: true },
   };
+  const bankFilter = {
+    householdId,
+    month,
+    sourceType: 'bank',
+    type: 'debit',
+  };
 
   if (resetCutoff) {
     manualFilter.createdAt = { $gte: resetCutoff };
     plaidFilter.createdAt = { $gte: resetCutoff };
+    bankFilter.createdAt = { $gte: resetCutoff };
   }
 
-  const [manualExpenses, plaidExpenseTransactions, plaidHouseholdTransactions, fixedExpenses] = await Promise.all([
+  const [manualExpenses, plaidExpenseTransactions, plaidHouseholdTransactions, bankExpenseTransactions, bankHouseholdTransactions, fixedExpenses] = await Promise.all([
     Expense.find(manualFilter).sort({ date: -1 }).lean(),
     PlaidTransaction.find({ ...plaidFilter, amount: { $gt: 0 } }).sort({ date: -1 }).lean(),
     PlaidTransaction.find(plaidFilter).sort({ date: -1 }).lean(),
+    BankTransaction.find(bankFilter).sort({ dateISO: -1, createdAt: -1 }).lean(),
+    BankTransaction.find({ householdId, month, sourceType: 'bank' }).sort({ dateISO: -1, createdAt: -1 }).lean(),
     FixedExpense.find({ householdId, isActive: true }).lean(),
   ]);
 
-  const internalTransferIds = buildInternalTransferIdSet(plaidHouseholdTransactions);
+  const internalTransferIds = buildInternalTransferIdSet([
+    ...plaidHouseholdTransactions,
+    ...bankHouseholdTransactions,
+  ]);
+
+  const externalTransferOutflows = [...plaidExpenseTransactions, ...bankExpenseTransactions]
+    .filter((transaction) => isLikelyTransferDescriptor(transaction) && !internalTransferIds.has(String(transaction._id)));
 
   const merged = [
     ...manualExpenses.map(toUnifiedManualExpense),
@@ -231,6 +289,10 @@ export async function getUnifiedMonthlyVariableExpenses(householdId, month) {
       .filter((transaction) => !isLikelyFixedPlaidTransaction(transaction, fixedExpenses))
       .filter((transaction) => !isManualDuplicateOfPlaid(transaction, manualExpenses))
       .map(toUnifiedPlaidExpense),
+    ...bankExpenseTransactions
+      .filter((transaction) => createdAtAfterReset(transaction, resetCutoff))
+      .filter((transaction) => !internalTransferIds.has(String(transaction._id)))
+      .map(toUnifiedBankExpense),
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
   const byCategory = {};
@@ -246,13 +308,13 @@ export async function getUnifiedMonthlyVariableExpenses(householdId, month) {
     expenses: merged,
     byCategory,
     total,
-    excludedInternalTransfers: plaidExpenseTransactions.filter((transaction) => internalTransferIds.has(String(transaction._id))).length,
+    excludedInternalTransfers: [...plaidExpenseTransactions, ...bankExpenseTransactions].filter((transaction) => internalTransferIds.has(String(transaction._id))).length,
     externalTransferOutflows: externalTransferOutflows.length,
   };
 }
 
 export async function getUnifiedVariableExpensesByHousehold(householdId) {
-  const [manualExpenses, plaidExpenseTransactions, plaidHouseholdTransactions, fixedExpenses, resetCutoffMap] = await Promise.all([
+  const [manualExpenses, plaidExpenseTransactions, plaidHouseholdTransactions, bankExpenseTransactions, bankHouseholdTransactions, fixedExpenses, resetCutoffMap] = await Promise.all([
     Expense.find({ householdId }).sort({ date: -1 }).lean(),
     PlaidTransaction.find({
       householdId,
@@ -265,16 +327,31 @@ export async function getUnifiedVariableExpensesByHousehold(householdId) {
       isPending: { $ne: true },
       isDuplicate: { $ne: true },
     }).sort({ date: -1 }).lean(),
+    BankTransaction.find({
+      householdId,
+      sourceType: 'bank',
+      type: 'debit',
+    }).sort({ dateISO: -1, createdAt: -1 }).lean(),
+    BankTransaction.find({
+      householdId,
+      sourceType: 'bank',
+    }).sort({ dateISO: -1, createdAt: -1 }).lean(),
     FixedExpense.find({ householdId, isActive: true }).lean(),
     getMonthResetCutoffMap(householdId),
   ]);
 
-  const internalTransferIds = buildInternalTransferIdSet(plaidHouseholdTransactions);
+  const internalTransferIds = buildInternalTransferIdSet([
+    ...plaidHouseholdTransactions,
+    ...bankHouseholdTransactions,
+  ]);
   const filteredManualExpenses = manualExpenses
     .filter((expense) => createdAtAfterReset(expense, resetCutoffMap[expense.month || getMonthString(expense.date)]));
   const filteredPlaidExpenseTransactions = plaidExpenseTransactions
     .filter((transaction) => createdAtAfterReset(transaction, resetCutoffMap[getMonthString(transaction.date)]));
-  const externalTransferOutflows = filteredPlaidExpenseTransactions.filter((transaction) => isLikelyTransferDescriptor(transaction) && !internalTransferIds.has(String(transaction._id)));
+  const filteredBankExpenseTransactions = bankExpenseTransactions
+    .filter((transaction) => createdAtAfterReset(transaction, resetCutoffMap[transaction.month || getMonthString(transaction.dateISO || transaction.date || transaction.createdAt)]));
+  const externalTransferOutflows = [...filteredPlaidExpenseTransactions, ...filteredBankExpenseTransactions]
+    .filter((transaction) => isLikelyTransferDescriptor(transaction) && !internalTransferIds.has(String(transaction._id)));
 
   const merged = [
     ...filteredManualExpenses.map(toUnifiedManualExpense),
@@ -283,6 +360,9 @@ export async function getUnifiedVariableExpensesByHousehold(householdId) {
       .filter((transaction) => !isLikelyFixedPlaidTransaction(transaction, fixedExpenses))
       .filter((transaction) => !isManualDuplicateOfPlaid(transaction, filteredManualExpenses))
       .map(toUnifiedPlaidExpense),
+    ...filteredBankExpenseTransactions
+      .filter((transaction) => !internalTransferIds.has(String(transaction._id)))
+      .map(toUnifiedBankExpense),
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
   const total = merged.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
@@ -297,7 +377,7 @@ export async function getUnifiedVariableExpensesByHousehold(householdId) {
     expenses: merged,
     total,
     byMonth,
-    excludedInternalTransfers: plaidExpenseTransactions.filter((transaction) => internalTransferIds.has(String(transaction._id))).length,
+    excludedInternalTransfers: [...plaidExpenseTransactions, ...bankExpenseTransactions].filter((transaction) => internalTransferIds.has(String(transaction._id))).length,
     externalTransferOutflows: externalTransferOutflows.length,
   };
 }

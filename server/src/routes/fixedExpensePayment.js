@@ -6,7 +6,9 @@ import GoalContribution from '../models/GoalContribution.js';
 import LinkedAccount from '../models/LinkedAccount.js';
 import { createFixedExpensePaymentAndMirror } from '../services/fixedExpensePaymentService.js';
 import { getFixedExpenseReviewCandidates } from '../services/fixedExpensePaymentService.js';
+import { recordFixedExpenseMatchFeedback } from '../services/fixedExpensePaymentService.js';
 import PlaidTransaction from '../models/PlaidTransaction.js';
+import BankTransaction from '../models/BankTransaction.js';
 
 const router = Router({ mergeParams: true });
 
@@ -94,28 +96,112 @@ router.post('/:householdId', authMiddleware, householdAuthMiddleware, async (req
 router.post('/:householdId/confirm-candidate', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
   try {
     const { householdId } = req.params;
-    const { fixedExpenseId, plaidTransactionId } = req.body;
-    if (!fixedExpenseId || !plaidTransactionId) {
-      return res.status(400).json({ error: 'fixedExpenseId and plaidTransactionId required' });
+    const {
+      fixedExpenseId,
+      transactionType = null,
+      transactionId = null,
+      plaidTransactionId = null,
+      confidence = 0,
+      reasons = {},
+    } = req.body;
+
+    const resolvedTransactionType = transactionType || (plaidTransactionId ? 'plaid' : null);
+    const resolvedTransactionId = transactionId || plaidTransactionId;
+
+    if (!fixedExpenseId || !resolvedTransactionType || !resolvedTransactionId) {
+      return res.status(400).json({ error: 'fixedExpenseId, transactionType, and transactionId required' });
     }
 
-    const transaction = await PlaidTransaction.findOne({ _id: plaidTransactionId, householdId });
+    let transaction = null;
+    if (resolvedTransactionType === 'plaid') {
+      transaction = await PlaidTransaction.findOne({ _id: resolvedTransactionId, householdId });
+    } else if (resolvedTransactionType === 'bank') {
+      transaction = await BankTransaction.findOne({ _id: resolvedTransactionId, householdId, type: 'debit' });
+    }
+
     if (!transaction) return res.status(404).json({ error: 'Transaction not found' });
+
+    const amount = resolvedTransactionType === 'plaid'
+      ? Number(transaction.amount)
+      : Number(transaction.amount);
+    const paymentDate = resolvedTransactionType === 'plaid' ? transaction.date : (transaction.dateISO || transaction.date);
+    const notes = resolvedTransactionType === 'plaid'
+      ? `Confirmed from review queue: ${transaction.merchant || transaction.name || transaction.description || ''}`
+      : `Confirmed from uploaded statement review: ${transaction.description || transaction.accountName || ''}`;
+    const source = resolvedTransactionType === 'plaid' ? 'plaid_auto' : 'bank_auto';
 
     const result = await createFixedExpensePaymentAndMirror({
       householdId,
       fixedExpenseId,
-      amount: Number(transaction.amount),
-      paymentDate: transaction.date,
-      method: transaction.paymentMethod === 'in store' ? 'other' : 'online',
-      notes: `Confirmed from Plaid review queue: ${transaction.merchant || transaction.name}`,
-      source: 'plaid_auto',
-      plaidTransactionId: transaction._id,
+      amount,
+      paymentDate,
+      method: resolvedTransactionType === 'plaid' && transaction.paymentMethod === 'in store' ? 'other' : 'online',
+      notes,
+      source,
+      plaidTransactionId: resolvedTransactionType === 'plaid' ? transaction._id : null,
+      sourceTransactionType: resolvedTransactionType,
+      sourceTransactionId: transaction._id,
+    });
+
+    await recordFixedExpenseMatchFeedback({
+      householdId,
+      fixedExpenseId,
+      transactionType: resolvedTransactionType,
+      transactionId: resolvedTransactionId,
+      decision: 'confirmed',
+      confidence,
+      features: {
+        amountDeltaPct: reasons.amountDeltaPct,
+        aliasMatched: Number(reasons.aliasHitCount || 0) > 0,
+        dueDateDistanceDays: reasons.dueDateDistanceDays,
+        merchantHitCount: reasons.aliasHitCount || 0,
+      },
+      createdBy: req.user.userId,
     });
 
     res.status(201).json(result);
   } catch (err) {
     console.error('[fixedExpensePayment CONFIRM] error', err && (err.stack || err.message || err));
+    next(err);
+  }
+});
+
+router.post('/:householdId/reject-candidate', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId } = req.params;
+    const {
+      fixedExpenseId,
+      transactionType,
+      transactionId,
+      confidence = 0,
+      reasons = {},
+      reason = '',
+    } = req.body;
+
+    if (!fixedExpenseId || !transactionType || !transactionId) {
+      return res.status(400).json({ error: 'fixedExpenseId, transactionType, and transactionId required' });
+    }
+
+    await recordFixedExpenseMatchFeedback({
+      householdId,
+      fixedExpenseId,
+      transactionType,
+      transactionId,
+      decision: 'rejected',
+      confidence,
+      reason,
+      features: {
+        amountDeltaPct: reasons.amountDeltaPct,
+        aliasMatched: Number(reasons.aliasHitCount || 0) > 0,
+        dueDateDistanceDays: reasons.dueDateDistanceDays,
+        merchantHitCount: reasons.aliasHitCount || 0,
+      },
+      createdBy: req.user.userId,
+    });
+
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error('[fixedExpensePayment REJECT] error', err && (err.stack || err.message || err));
     next(err);
   }
 });

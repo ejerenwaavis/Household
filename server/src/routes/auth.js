@@ -11,7 +11,7 @@ import {
   generateAuthenticationOptions,
   verifyAuthenticationResponse,
 } from '@simplewebauthn/server';
-import { authMiddleware, generateToken, verifyToken } from '../middleware/auth.js';
+import { authMiddleware, verifyToken } from '../middleware/auth.js';
 import { TokenRotationService } from '../services/tokenRotationService.js';
 import { authSchemas, validateBody } from '../utils/validationSchemas.js';
 import User from '../models/User.js';
@@ -32,8 +32,64 @@ import Subscription from '../models/Subscription.js';
 import PlaidService from '../services/plaidService.js';
 import * as StripeService from '../services/stripeService.js';
 import { sendVerificationEmail } from '../services/emailService.js';
+import { createAuditLog } from '../services/auditService.js';
+import { createRequestFingerprint } from '../utils/requestFingerprint.js';
 
 const router = Router();
+
+const COOKIE_SECURE = process.env.NODE_ENV === 'production';
+const ACCESS_COOKIE_NAME = 'accessToken';
+const REFRESH_COOKIE_NAME = 'refreshToken';
+
+function setAuthCookies(res, accessToken, refreshToken) {
+  if (accessToken) {
+    res.cookie(ACCESS_COOKIE_NAME, accessToken, {
+      httpOnly: true,
+      secure: COOKIE_SECURE,
+      sameSite: 'strict',
+      maxAge: 15 * 60 * 1000,
+      path: '/',
+    });
+  }
+
+  if (refreshToken) {
+    res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
+      httpOnly: true,
+      secure: COOKIE_SECURE,
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/',
+    });
+  }
+}
+
+function clearAuthCookies(res) {
+  res.clearCookie(ACCESS_COOKIE_NAME, { path: '/' });
+  res.clearCookie(REFRESH_COOKIE_NAME, { path: '/' });
+}
+
+function parseCookies(cookieHeader = '') {
+  return String(cookieHeader)
+    .split(';')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .reduce((acc, pair) => {
+      const idx = pair.indexOf('=');
+      if (idx < 0) return acc;
+      const key = pair.substring(0, idx).trim();
+      const value = decodeURIComponent(pair.substring(idx + 1).trim());
+      acc[key] = value;
+      return acc;
+    }, {});
+}
+
+function getTokenFromRequest(req, type = 'access') {
+  const cookies = parseCookies(req.headers.cookie || '');
+  if (type === 'refresh') {
+    return req.body?.refreshToken || cookies[REFRESH_COOKIE_NAME] || null;
+  }
+  return req.headers.authorization?.split(' ')[1] || cookies[ACCESS_COOKIE_NAME] || null;
+}
 
 // Register
 router.post('/register', validateBody(authSchemas.register), async (req, res, next) => {
@@ -108,13 +164,30 @@ router.post('/register', validateBody(authSchemas.register), async (req, res, ne
     );
 
     // Generate tokens with rotation support
+    const { hash: tokenFingerprint } = createRequestFingerprint(req);
     const accessToken = TokenRotationService.generateAccessToken({
       userId: user.userId,
       email: user.email,
       householdId: user.householdId,
-      role: user.role
+      role: user.role,
+      tokenFingerprint,
     });
     const refreshToken = TokenRotationService.generateRefreshToken(user._id, 0);
+
+    setAuthCookies(res, accessToken, refreshToken);
+
+    await createAuditLog({
+      req,
+      action: 'auth.register',
+      status: 'success',
+      userId: user.userId,
+      householdId: user.householdId,
+      targetType: 'user',
+      targetId: user.userId,
+      metadata: {
+        email: user.email,
+      },
+    });
 
     res.status(201).json({
       user: { userId, email, name, householdId, householdName, onboardingCompleted: false, mfaEnabled: false, passkeyCount: 0, emailVerified: false },
@@ -128,6 +201,15 @@ router.post('/register', validateBody(authSchemas.register), async (req, res, ne
       stack: error.stack,
       code: error.code,
       details: error.details || 'No additional details',
+    });
+    await createAuditLog({
+      req,
+      action: 'auth.register',
+      status: 'failure',
+      metadata: {
+        email: req.body?.email,
+        message: error.message,
+      },
     });
     next(error);
   }
@@ -143,12 +225,26 @@ router.post('/login', validateBody(authSchemas.login), async (req, res, next) =>
     const user = await User.findOne({ email });
     if (!user) {
       console.warn('[AUTH] Login failed: User not found', { email });
+      await createAuditLog({
+        req,
+        action: 'auth.login',
+        status: 'failure',
+        metadata: { email, reason: 'USER_NOT_FOUND' },
+      });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
       console.warn('[AUTH] Login failed: Invalid password', { email });
+      await createAuditLog({
+        req,
+        action: 'auth.login',
+        status: 'failure',
+        userId: user.userId,
+        householdId: user.householdId,
+        metadata: { email, reason: 'INVALID_PASSWORD' },
+      });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -165,6 +261,14 @@ router.post('/login', validateBody(authSchemas.login), async (req, res, next) =>
         window: 1,
       });
       if (!valid) {
+        await createAuditLog({
+          req,
+          action: 'auth.login',
+          status: 'failure',
+          userId: user.userId,
+          householdId: user.householdId,
+          metadata: { email, reason: 'INVALID_MFA' },
+        });
         return res.status(401).json({ error: 'Invalid MFA code' });
       }
     }
@@ -181,13 +285,17 @@ router.post('/login', validateBody(authSchemas.login), async (req, res, next) =>
     await user.save();
     
     // Generate tokens with rotation support
+    const { hash: tokenFingerprint } = createRequestFingerprint(req);
     const accessToken = TokenRotationService.generateAccessToken({
       userId: user.userId,
       email: user.email,
       householdId: user.householdId,
-      role: user.role
+      role: user.role,
+      tokenFingerprint,
     });
     const refreshToken = TokenRotationService.generateRefreshToken(user._id, user.tokenVersion || 0);
+
+    setAuthCookies(res, accessToken, refreshToken);
     
     // Get any pending invites for this user
     const pendingInvites = await HouseholdInvite.find({
@@ -201,6 +309,19 @@ router.post('/login', validateBody(authSchemas.login), async (req, res, next) =>
     const accountFrozen = !user.emailVerified && user.emailFrozenAt && user.emailFrozenAt <= now;
 
     console.log('[AUTH] Login successful:', { userId: user.userId, email, householdId: user.householdId, pendingInvites: pendingInvites.length });
+
+    await createAuditLog({
+      req,
+      action: 'auth.login',
+      status: 'success',
+      userId: user.userId,
+      householdId: user.householdId,
+      targetType: 'user',
+      targetId: user.userId,
+      metadata: {
+        mfaEnabled: user.mfaEnabled || false,
+      },
+    });
 
     // Non-blocking: fetch fresh transactions for this user's accounts in the background.
     // We don't await this — the login response goes back immediately.
@@ -243,6 +364,15 @@ router.post('/login', validateBody(authSchemas.login), async (req, res, next) =>
       message: error.message,
       stack: error.stack,
       code: error.code,
+    });
+    await createAuditLog({
+      req,
+      action: 'auth.login',
+      status: 'failure',
+      metadata: {
+        email: req.body?.email,
+        message: error.message,
+      },
     });
     next(error);
   }
@@ -298,7 +428,7 @@ router.post('/resend-verification', authMiddleware, async (req, res, next) => {
 
 // Verify token
 router.get('/me', (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1];
+  const token = getTokenFromRequest(req, 'access');
 
   if (!token) {
     return res.status(401).json({ error: 'No token provided' });
@@ -316,9 +446,23 @@ router.get('/me', (req, res) => {
 // Exchange refresh token for new access token (with token rotation)
 router.post('/refresh', validateBody(authSchemas.refresh), async (req, res, next) => {
   try {
-    const { refreshToken } = req.body;
+    const refreshToken = getTokenFromRequest(req, 'refresh');
 
-    const tokens = await TokenRotationService.rotateTokens(refreshToken);
+    if (!refreshToken) {
+      return res.status(400).json({ error: 'No refresh token provided' });
+    }
+
+    const { hash: tokenFingerprint } = createRequestFingerprint(req);
+
+    const tokens = await TokenRotationService.rotateTokens(refreshToken, { tokenFingerprint });
+
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+
+    await createAuditLog({
+      req,
+      action: 'auth.refresh',
+      status: 'success',
+    });
 
     console.log('[AUTH] Token rotation successful');
     res.json({
@@ -328,6 +472,12 @@ router.post('/refresh', validateBody(authSchemas.refresh), async (req, res, next
     });
   } catch (error) {
     console.error('[AUTH] Token refresh error:', error.message);
+    await createAuditLog({
+      req,
+      action: 'auth.refresh',
+      status: 'failure',
+      metadata: { message: error.message },
+    });
     return res.status(401).json({ error: 'Invalid or expired refresh token' });
   }
 });
@@ -358,11 +508,25 @@ router.post('/switch-household', authMiddleware, async (req, res, next) => {
     user.updatedAt = new Date();
     await user.save();
 
+    const { hash: tokenFingerprint } = createRequestFingerprint(req);
     const accessToken = TokenRotationService.generateAccessToken({
       userId: user.userId,
       email: user.email,
       householdId: targetHouseholdId,
       role: user.role,
+      tokenFingerprint,
+    });
+
+    setAuthCookies(res, accessToken, null);
+
+    await createAuditLog({
+      req,
+      action: 'auth.switch_household',
+      status: 'success',
+      userId: user.userId,
+      householdId: targetHouseholdId,
+      targetType: 'household',
+      targetId: targetHouseholdId,
     });
 
     res.json({
@@ -377,6 +541,14 @@ router.post('/switch-household', authMiddleware, async (req, res, next) => {
     });
   } catch (error) {
     console.error('[AUTH] Switch household error:', error.message);
+    await createAuditLog({
+      req,
+      action: 'auth.switch_household',
+      status: 'failure',
+      userId: req.user?.userId,
+      householdId: req.user?.householdId,
+      metadata: { message: error.message },
+    });
     next(error);
   }
 });
@@ -385,7 +557,7 @@ router.post('/switch-household', authMiddleware, async (req, res, next) => {
 // Invalidates all refresh tokens for the user
 router.post('/logout', async (req, res, next) => {
   try {
-    const token = req.headers.authorization?.split(' ')[1];
+    const token = getTokenFromRequest(req, 'access');
 
     if (!token) {
       return res.status(400).json({ error: 'No token provided' });
@@ -398,11 +570,26 @@ router.post('/logout', async (req, res, next) => {
 
     // Invalidate all tokens for this user
     await TokenRotationService.invalidateAllTokens(decoded.userId);
+    clearAuthCookies(res);
+
+    await createAuditLog({
+      req,
+      action: 'auth.logout',
+      status: 'success',
+      userId: decoded.userId,
+      householdId: decoded.householdId,
+    });
 
     console.log('[AUTH] User logged out successfully:', { userId: decoded.userId });
     res.json({ message: 'Logged out successfully' });
   } catch (error) {
     console.error('[AUTH] Logout error:', error.message);
+    await createAuditLog({
+      req,
+      action: 'auth.logout',
+      status: 'failure',
+      metadata: { message: error.message },
+    });
     next(error);
   }
 });
@@ -471,10 +658,28 @@ router.patch('/change-password', authMiddleware, async (req, res, next) => {
     user.tokenVersion = (user.tokenVersion || 0) + 1;
     await user.save();
 
+    await createAuditLog({
+      req,
+      action: 'auth.password_changed',
+      status: 'success',
+      userId,
+      householdId: user.householdId,
+      targetType: 'user',
+      targetId: userId,
+    });
+
     console.log('[AUTH] Password changed:', { userId });
     res.json({ message: 'Password changed successfully. Please log in again.' });
   } catch (error) {
     console.error('[AUTH] Change password error:', error.message);
+    await createAuditLog({
+      req,
+      action: 'auth.password_changed',
+      status: 'failure',
+      userId: req.user?.userId,
+      householdId: req.user?.householdId,
+      metadata: { message: error.message },
+    });
     next(error);
   }
 });
@@ -532,8 +737,26 @@ router.post('/mfa/verify', authMiddleware, async (req, res, next) => {
     user.mfaEnabled = true;
     await user.save();
 
+    await createAuditLog({
+      req,
+      action: 'auth.mfa_enabled',
+      status: 'success',
+      userId,
+      householdId: user.householdId,
+      targetType: 'user',
+      targetId: userId,
+    });
+
     res.json({ message: 'MFA enabled successfully' });
   } catch (error) {
+    await createAuditLog({
+      req,
+      action: 'auth.mfa_enabled',
+      status: 'failure',
+      userId: req.user?.userId,
+      householdId: req.user?.householdId,
+      metadata: { message: error.message },
+    });
     next(error);
   }
 });
@@ -558,8 +781,26 @@ router.post('/mfa/disable', authMiddleware, async (req, res, next) => {
     user.mfaSecret = null;
     await user.save();
 
+    await createAuditLog({
+      req,
+      action: 'auth.mfa_disabled',
+      status: 'success',
+      userId,
+      householdId: user.householdId,
+      targetType: 'user',
+      targetId: userId,
+    });
+
     res.json({ message: 'MFA disabled successfully' });
   } catch (error) {
+    await createAuditLog({
+      req,
+      action: 'auth.mfa_disabled',
+      status: 'failure',
+      userId: req.user?.userId,
+      householdId: req.user?.householdId,
+      metadata: { message: error.message },
+    });
     next(error);
   }
 });
@@ -760,16 +1001,27 @@ router.post('/passkey/login/finish', async (req, res, next) => {
 
     const household = await Household.findOne({ householdId: user.householdId });
 
-    const tokenPayload = {
+    const { hash: tokenFingerprint } = createRequestFingerprint(req);
+    const accessToken = TokenRotationService.generateAccessToken({
       userId: user.userId,
       email: user.email,
       householdId: user.householdId,
       role: user.role,
-      tokenVersion: user.tokenVersion,
-    };
+      tokenFingerprint,
+    });
+    const refreshToken = TokenRotationService.generateRefreshToken(user._id, user.tokenVersion || 0);
 
-    const accessToken = generateToken(tokenPayload, '15m');
-    const refreshToken = generateToken({ ...tokenPayload, type: 'refresh' }, '7d');
+    setAuthCookies(res, accessToken, refreshToken);
+
+    await createAuditLog({
+      req,
+      action: 'auth.passkey_login',
+      status: 'success',
+      userId: user.userId,
+      householdId: user.householdId,
+      targetType: 'user',
+      targetId: user.userId,
+    });
 
     res.json({
       user: {
@@ -785,6 +1037,12 @@ router.post('/passkey/login/finish', async (req, res, next) => {
       pendingInvites: [],
     });
   } catch (error) {
+    await createAuditLog({
+      req,
+      action: 'auth.passkey_login',
+      status: 'failure',
+      metadata: { message: error.message },
+    });
     next(error);
   }
 });
@@ -901,9 +1159,27 @@ router.delete('/account', authMiddleware, async (req, res, next) => {
     // ── 4. Delete user ────────────────────────────────────────────────────────
     await User.deleteOne({ userId });
 
+    await createAuditLog({
+      req,
+      action: 'auth.account_deleted',
+      status: 'success',
+      userId,
+      householdId,
+      targetType: 'user',
+      targetId: userId,
+    });
+
     console.log('[AUTH] Account deleted:', { userId, householdId });
     res.json({ message: 'Account permanently deleted' });
   } catch (error) {
+    await createAuditLog({
+      req,
+      action: 'auth.account_deleted',
+      status: 'failure',
+      userId: req.user?.userId,
+      householdId: req.user?.householdId,
+      metadata: { message: error.message },
+    });
     next(error);
   }
 });

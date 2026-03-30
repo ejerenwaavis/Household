@@ -156,7 +156,9 @@ export default function FinanceMeetingReportPage() {
 
       // Filter to selected month
       setIncome(allIncome.filter(i => i.month === selectedMonth));
-      setVarExpenses(allVar.filter(e => (e.month || (e.date || '').substring(0, 7)) === selectedMonth));
+      // Exclude bank_upload entries — those are already in savedTxns (Imported Statements section)
+      // and would cause double-counting if also included in totalVar
+      setVarExpenses(allVar.filter(e => e.source !== 'bank_upload' && (e.month || (e.date || '').substring(0, 7)) === selectedMonth));
       // Fixed expenses are not month-specific — all are recurring; filter payments to month
       setFixedExpenses(allFixed);
       setFixedPayments(allFixPay.filter(p => (p.month || (p.paymentDate || '').substring(0, 7)) === selectedMonth));
