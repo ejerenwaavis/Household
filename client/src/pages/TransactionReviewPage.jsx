@@ -152,6 +152,8 @@ export default function TransactionReviewPage() {
   const [showUploadTool, setShowUploadTool] = useState(false);
   const [importedEditMode, setImportedEditMode] = useState(false);
   const [importedDrafts, setImportedDrafts] = useState({});
+  const [syncedEditMode, setSyncedEditMode] = useState(false);
+  const [syncedDrafts, setSyncedDrafts] = useState({});
   const [uploading, setUploading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
@@ -486,6 +488,46 @@ export default function TransactionReviewPage() {
       delete next[transactionId];
       return next;
     });
+  };
+
+  const upsertSyncedDraft = (transaction, patch) => {
+    setSyncedDrafts((current) => {
+      const existing = current[transaction._id] || {
+        userCategory: transaction.userCategory || transaction.primaryCategory || 'Other',
+        saving: false,
+      };
+      return { ...current, [transaction._id]: { ...existing, ...patch } };
+    });
+  };
+
+  const clearSyncedDraft = (transactionId) => {
+    setSyncedDrafts((current) => {
+      const next = { ...current };
+      delete next[transactionId];
+      return next;
+    });
+  };
+
+  const saveSyncedTransaction = async (transaction) => {
+    if (!user?.householdId) return;
+    const draft = syncedDrafts[transaction._id];
+    if (!draft) return;
+
+    upsertSyncedDraft(transaction, { saving: true });
+    try {
+      const response = await api.patch(`/plaid/transactions/${transaction._id}`, {
+        userCategory: draft.userCategory,
+        isReconciled: true,
+      });
+      const updated = response.data.transaction;
+      setSyncedTransactions((current) =>
+        current.map((row) => (row._id === transaction._id ? { ...row, ...updated } : row))
+      );
+      clearSyncedDraft(transaction._id);
+    } catch (saveError) {
+      console.error('[TransactionReviewPage] save synced transaction error:', saveError);
+      upsertSyncedDraft(transaction, { saving: false });
+    }
   };
 
   const getAssignedExpenseName = (transaction) => {
@@ -1024,6 +1066,116 @@ export default function TransactionReviewPage() {
                       </td>
                       <td className={`px-4 py-2 text-right font-semibold ${transaction.type === 'credit' ? 'text-green-700' : 'text-red-700'}`}>
                         {fmtSignedTransactionAmount(transaction)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="font-semibold text-gray-900 dark:text-gray-100">Plaid Synced Transactions for {selectedMonth}</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                AI-suggested categories are pre-filled. Review and confirm to mark as reconciled.
+              </p>
+            </div>
+            <button
+              onClick={() => setSyncedEditMode((current) => !current)}
+              className="px-3 py-1.5 rounded-lg border border-green-200 text-green-700 bg-green-50 hover:bg-green-100 text-sm"
+            >
+              {syncedEditMode ? 'Done Editing' : 'Review Categories'}
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-900/30">
+                <tr>
+                  <th className="px-4 py-3 text-left">Date</th>
+                  <th className="px-4 py-3 text-left">Merchant</th>
+                  <th className="px-4 py-3 text-left">Description</th>
+                  <th className="px-4 py-3 text-left">Category</th>
+                  <th className="px-4 py-3 text-left">Status</th>
+                  {syncedEditMode && <th className="px-4 py-3 text-left">Actions</th>}
+                  <th className="px-4 py-3 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {syncedTransactions.length === 0 ? (
+                  <tr>
+                    <td colSpan={syncedEditMode ? 7 : 6} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                      No Plaid synced transactions for this month yet.
+                    </td>
+                  </tr>
+                ) : syncedTransactions.map((transaction) => {
+                  const draft = syncedDrafts[transaction._id] || null;
+                  const isSaving = Boolean(draft?.saving);
+                  const hasDraft = Boolean(draft);
+                  const effectiveCategory = draft?.userCategory || transaction.userCategory || transaction.primaryCategory || 'Other';
+                  const isReviewed = transaction.isReconciled;
+                  const aiSuggestion = transaction.userCategory && !isReviewed ? transaction.userCategory : null;
+
+                  return (
+                    <tr key={transaction._id} className={`hover:bg-gray-50 dark:hover:bg-gray-900/20 ${!isReviewed ? 'bg-amber-50/30 dark:bg-amber-900/5' : ''}`}>
+                      <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{transaction.date ? new Date(transaction.date).toLocaleDateString() : '—'}</td>
+                      <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{transaction.merchant || '—'}</td>
+                      <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{transaction.description || transaction.name || '—'}</td>
+                      <td className="px-4 py-2">
+                        {syncedEditMode ? (
+                          <select
+                            value={effectiveCategory}
+                            onChange={(event) => upsertSyncedDraft(transaction, { userCategory: event.target.value })}
+                            className="px-2 py-1 rounded border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-700 text-sm"
+                          >
+                            {aiSuggestion && (
+                              <option value={aiSuggestion}>✨ {aiSuggestion} (AI suggested)</option>
+                            )}
+                            {TRANSACTION_CATEGORIES.map((category) => (
+                              <option key={category} value={category}>{category}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="flex items-center gap-1.5">
+                            {effectiveCategory}
+                            {aiSuggestion && (
+                              <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">AI</span>
+                            )}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2">
+                        {isReviewed ? (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">Reviewed</span>
+                        ) : (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Pending</span>
+                        )}
+                      </td>
+                      {syncedEditMode && (
+                        <td className="px-4 py-2">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => saveSyncedTransaction(transaction)}
+                              disabled={!hasDraft || isSaving}
+                              className="px-2 py-1 rounded bg-green-600 text-white text-xs hover:bg-green-700 disabled:opacity-50"
+                            >
+                              {isSaving ? 'Saving...' : 'Confirm'}
+                            </button>
+                            <button
+                              onClick={() => clearSyncedDraft(transaction._id)}
+                              disabled={!hasDraft || isSaving}
+                              className="px-2 py-1 rounded border border-gray-300 text-gray-700 text-xs hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              Reset
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                      <td className={`px-4 py-2 text-right font-semibold ${transaction.amount < 0 ? 'text-green-700' : 'text-red-700'}`}>
+                        {transaction.amount < 0 ? '+' : '-'}${Math.abs(Number(transaction.amount) || 0).toFixed(2)}
                       </td>
                     </tr>
                   );

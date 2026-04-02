@@ -3,6 +3,8 @@ import MetricCard from '../components/MetricCard';
 import SkeletonBlock from '../components/SkeletonBlock';
 import SpendingByCategoryWidget from '../components/SpendingByCategoryWidget';
 import PendingTasksWidget from '../components/PendingTasksWidget';
+import TaskReminderWidget from '../components/TaskReminderWidget';
+import OverspendSummaryPanel from '../components/OverspendSummaryPanel';
 import MemberDetailsModal from '../components/MemberDetailsModal';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -349,6 +351,12 @@ export default function DashboardPage(){
         </div>
 
         <PendingTasksWidget tasks={payments} />
+
+        {/* Task reminders for overspend payment tasks */}
+        <TaskReminderWidget />
+
+        {/* Overspend accountability tracker */}
+        <OverspendSummaryPanel />
 
         {/* Row 2: Spending chart + Recent Activity (left) | quick widgets (right) */}
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
