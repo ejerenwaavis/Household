@@ -117,7 +117,8 @@ export const corsConfig = {
     'X-API-Key',
     'Accept',
     'Accept-Encoding',
-    'Accept-Language'
+    'Accept-Language',
+    'X-Household-Id'
   ],
   exposedHeaders: [
     'X-Total-Count',
