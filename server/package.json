@@ -6,9 +6,9 @@
     "dev": "node --env-file-if-exists=.env --watch src/index.js",
     "build": "echo 'No build needed for pure Node.js'",
     "start": "node src/index.js",
-    "test": "jest --detectOpenHandles",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test": "jest --config jest.config.cjs --detectOpenHandles",
+    "test:watch": "jest --config jest.config.cjs --watch",
+    "test:coverage": "jest --config jest.config.cjs --coverage"
   },
   "dependencies": {
     "@simplewebauthn/server": "^13.2.3",
@@ -24,6 +24,7 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^6.9.7",
     "openai": "^6.24.0",
+    "pdfkit": "^0.15.2",
     "plaid": "^41.3.0",
     "qrcode": "^1.5.4",
     "react-plaid-link": "^4.1.1",
@@ -36,6 +37,9 @@
     "winston": "^3.19.0"
   },
   "devDependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/preset-env": "^7.29.2",
+    "babel-jest": "^30.2.0",
     "jest": "^30.2.0",
     "supertest": "^7.2.2"
   }

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { createHash, randomUUID } from 'crypto';
+import multer from 'multer';
 import { authMiddleware, householdAuthMiddleware } from '../middleware/auth.js';
 import BankTransaction from '../models/BankTransaction.js';
 import ManualBankAccount from '../models/ManualBankAccount.js';
@@ -8,6 +9,7 @@ import PlaidTransaction from '../models/PlaidTransaction.js';
 import CardStatement from '../models/CardStatement.js';
 import CreditCard from '../models/CreditCard.js';
 import { getMonthResetCutoff } from '../services/monthWorkspaceService.js';
+import { parseCsvText, inferBankName } from './statement.js';
 
 const router = Router({ mergeParams: true });
 
@@ -571,6 +573,107 @@ router.post('/:householdId/:id/unlink-transfer', authMiddleware, householdAuthMi
     await BankTransaction.updateMany({ householdId, transferId }, { $set: { transferId: null, transferMeta: null } });
 
     res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+const csvUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = file.originalname.split('.').pop().toLowerCase();
+    if (ext === 'csv' || file.mimetype === 'text/csv' || file.mimetype === 'application/csv') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only CSV files are accepted'));
+    }
+  },
+});
+
+/**
+ * POST /:householdId/import-csv
+ * Direct CSV → BankTransaction pipeline. Accepts a CSV file, auto-detects
+ * Bank of America or Wells Fargo format, and immediately imports transactions
+ * (dedup by hash).  Returns imported/skipped counts + detectedFormat.
+ */
+router.post('/:householdId/import-csv', authMiddleware, householdAuthMiddleware, csvUpload.single('file'), async (req, res, next) => {
+  try {
+    const { householdId } = req.params;
+    if (!req.file) return res.status(400).json({ error: 'No CSV file uploaded. Use multipart field name "file".' });
+
+    const rawText = req.file.buffer.toString('utf8');
+    const parsed = parseCsvText(rawText, req.file.originalname);
+    const detectedBank = (parsed.bankName || '').toLowerCase();
+
+    let detectedFormat = 'unknown';
+    if (detectedBank.includes('bank of america') || detectedBank.includes('boa')) detectedFormat = 'bank_of_america';
+    else if (detectedBank.includes('wells fargo') || detectedBank.includes('wellsfargo')) detectedFormat = 'wells_fargo';
+    else if (parsed.bankName && parsed.bankName !== 'Uploaded Bank') detectedFormat = parsed.bankName;
+
+    if (!parsed.transactions || parsed.transactions.length === 0) {
+      return res.json({ imported: 0, skipped: 0, detectedFormat, bankName: parsed.bankName, message: 'No transactions found in file.' });
+    }
+
+    const accountIdentityKey = parsed.accountIdentityKey || buildAccountIdentityKey(parsed.bankName, parsed.accountMask, parsed.accountName);
+
+    // Resolve or create manual account
+    let manualAccount = await ManualBankAccount.findOne({ householdId, accountIdentityKey }).lean();
+    if (!manualAccount) {
+      manualAccount = await upsertManualAccount({
+        householdId,
+        userId: req.user.userId,
+        linkedAccountId: null,
+        bankName: parsed.bankName,
+        accountName: parsed.accountName,
+        accountMask: parsed.accountMask,
+        accountIdentityKey,
+        sourceDocumentCount: 1,
+      });
+    }
+
+    let imported = 0;
+    let skipped = 0;
+
+    for (const txn of parsed.transactions) {
+      const dateISO = normalizeDate(txn.date);
+      const month = dateISO ? dateISO.substring(0, 7) : '';
+      const hash = makeHash(householdId, accountIdentityKey, dateISO, txn.amount, txn.description);
+
+      try {
+        await BankTransaction.create({
+          householdId,
+          manualAccountId: manualAccount._id,
+          linkedAccountId: null,
+          date: txn.date || '',
+          dateISO: dateISO ? new Date(`${dateISO}T12:00:00Z`) : null,
+          month,
+          description: txn.description || '',
+          normalizedDescription: normalizeText(txn.description || ''),
+          amount: Number(txn.amount) || 0,
+          type: txn.type || 'debit',
+          category: txn.category || 'Other',
+          bank: parsed.bankName,
+          accountName: parsed.accountName || '',
+          accountMask: parsed.accountMask || '',
+          accountIdentityKey,
+          hash,
+          source: 'csv',
+          sourceType: 'bank',
+          sourceDocumentNames: [req.file.originalname],
+          importedBy: req.user.userId,
+        });
+        imported++;
+      } catch (err) {
+        if (err.code === 11000) {
+          skipped++; // duplicate hash
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    res.json({ imported, skipped, detectedFormat, bankName: parsed.bankName, accountMask: parsed.accountMask, totalRows: parsed.transactions.length });
   } catch (error) {
     next(error);
   }

@@ -5,6 +5,7 @@ import SpendingByCategoryWidget from '../components/SpendingByCategoryWidget';
 import PendingTasksWidget from '../components/PendingTasksWidget';
 import TaskReminderWidget from '../components/TaskReminderWidget';
 import OverspendSummaryPanel from '../components/OverspendSummaryPanel';
+import NetWorthWidget from '../components/NetWorthWidget';
 import MemberDetailsModal from '../components/MemberDetailsModal';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -357,6 +358,9 @@ export default function DashboardPage(){
 
         {/* Overspend accountability tracker */}
         <OverspendSummaryPanel />
+
+        {/* Net worth tracker */}
+        <NetWorthWidget />
 
         {/* Row 2: Spending chart + Recent Activity (left) | quick widgets (right) */}
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">

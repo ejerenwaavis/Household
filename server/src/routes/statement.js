@@ -399,4 +399,5 @@ router.post('/parse-pdf', authMiddleware, uploadLimiter, upload.single('file'), 
   }
 });
 
+export { parseCsvText, inferBankName };
 export default router;

@@ -14,6 +14,9 @@ import { getUnifiedMonthlyIncome } from '../services/unifiedIncomeService.js';
 import { getFinancialSummary } from '../services/financialSummaryService.js';
 import { generateMonthlyInsights } from '../services/aiInsightsService.js';
 import { answerFinancialQuestion } from '../services/nlQueryService.js';
+import { detectRecurringTransactions } from '../services/recurringTransactionService.js';
+import { generateMonthlyPDF } from '../services/pdfExportService.js';
+import NetWorthSnapshot from '../models/NetWorthSnapshot.js';
 import {
   getMonthRange,
   getMonthResetCutoff,
@@ -734,6 +737,107 @@ router.post('/:householdId/ask', authMiddleware, householdAuthMiddleware, async 
     }
     const result = await answerFinancialQuestion(householdId, question);
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /:householdId/recurring-transactions
+ * Detect recurring Plaid transaction patterns over the last N months.
+ * Query params: months (default 3)
+ */
+router.get('/:householdId/recurring-transactions', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId } = req.params;
+    const months = Math.min(12, Math.max(1, parseInt(req.query.months, 10) || 3));
+    const patterns = await detectRecurringTransactions(householdId, months);
+    res.json({ householdId, months, count: patterns.length, patterns });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /:householdId/net-worth
+ * Returns the last 12 net worth snapshots for a household (chronological).
+ */
+router.get('/:householdId/net-worth', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId } = req.params;
+    const limit = Math.min(24, Math.max(1, parseInt(req.query.limit, 10) || 12));
+    const snapshots = await NetWorthSnapshot.find({ householdId })
+      .sort({ month: -1 })
+      .limit(limit)
+      .lean();
+    res.json({ householdId, snapshots: snapshots.reverse() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /:householdId/net-worth
+ * Record or update a net worth snapshot for the current (or specified) month.
+ * Body: { month?, assets: { checkingAndSavings, investments, realEstate, vehicles, other },
+ *         liabilities: { creditCards, studentLoans, mortgage, carLoans, other }, notes? }
+ */
+router.post('/:householdId/net-worth', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId } = req.params;
+    const { assets = {}, liabilities = {}, notes = '', month: bodyMonth } = req.body;
+
+    const today = new Date();
+    const month = bodyMonth && /^\d{4}-\d{2}$/.test(bodyMonth)
+      ? bodyMonth
+      : `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+    const snapshot = await NetWorthSnapshot.findOneAndUpdate(
+      { householdId, month },
+      {
+        householdId,
+        month,
+        recordedAt: new Date(),
+        recordedBy: req.user?.userId,
+        assets: {
+          checkingAndSavings: Number(assets.checkingAndSavings) || 0,
+          investments: Number(assets.investments) || 0,
+          realEstate: Number(assets.realEstate) || 0,
+          vehicles: Number(assets.vehicles) || 0,
+          other: Number(assets.other) || 0,
+        },
+        liabilities: {
+          creditCards: Number(liabilities.creditCards) || 0,
+          studentLoans: Number(liabilities.studentLoans) || 0,
+          mortgage: Number(liabilities.mortgage) || 0,
+          carLoans: Number(liabilities.carLoans) || 0,
+          other: Number(liabilities.other) || 0,
+        },
+        notes,
+      },
+      { upsert: true, new: true, runValidators: true }
+    );
+
+    res.json({ snapshot });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /:householdId/monthly-report/:month/pdf
+ * Download a PDF financial report for the given month.
+ */
+router.get('/:householdId/monthly-report/:month/pdf', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId, month } = req.params;
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({ error: 'month must be in YYYY-MM format' });
+    }
+    const pdfBuffer = await generateMonthlyPDF(householdId, month);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="household-report-${month}.pdf"`);
+    res.send(pdfBuffer);
   } catch (error) {
     next(error);
   }

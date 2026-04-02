@@ -5,6 +5,9 @@
 
 module.exports = {
   testEnvironment: 'node',
+  transform: {
+    '^.+\\.js$': 'babel-jest',
+  },
   collectCoverageFrom: [
     'src/**/*.js',
     '!src/**/*.test.js',
@@ -22,7 +25,7 @@ module.exports = {
   bail: false,
   testTimeout: 10000,
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
-  coverageThresholds: {
+  coverageThreshold: {
     global: {
       branches: 50,
       functions: 50,
