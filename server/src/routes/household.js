@@ -11,6 +11,7 @@ import FixedExpense from '../models/FixedExpense.js';
 import { sendInviteEmail, sendWelcomeEmail } from '../services/emailService.js';
 import { getUnifiedMonthlyVariableExpenses } from '../services/unifiedExpenseService.js';
 import { getUnifiedMonthlyIncome } from '../services/unifiedIncomeService.js';
+import { getFinancialSummary } from '../services/financialSummaryService.js';
 import {
   getMonthRange,
   getMonthResetCutoff,
@@ -100,11 +101,14 @@ router.get('/:householdId/summary', authMiddleware, householdAuthMiddleware, asy
     const {
       total: totalIncome,
       excludedInternalTransfers: excludedIncomeInternalTransfers,
+      excludedInternalTransfersTotal: excludedIncomeTransfersTotal,
     } = await getUnifiedMonthlyIncome(householdId, monthStr);
     const {
       total: totalExpenses,
       excludedInternalTransfers: excludedExpenseInternalTransfers,
+      excludedInternalTransfersTotal: excludedExpenseTransfersTotal,
       externalTransferOutflows,
+      externalTransferOutflowsTotal,
     } = await getUnifiedMonthlyVariableExpenses(householdId, monthStr);
 
     res.json({
@@ -115,8 +119,12 @@ router.get('/:householdId/summary', authMiddleware, householdAuthMiddleware, asy
       balance: totalIncome - totalExpenses,
       transferBreakdown: {
         excludedIncomeInternalTransfers,
+        excludedIncomeTransfersTotal: excludedIncomeTransfersTotal || 0,
         excludedExpenseInternalTransfers,
+        excludedExpenseTransfersTotal: excludedExpenseTransfersTotal || 0,
         externalTransferOutflows,
+        externalTransferOutflowsTotal: externalTransferOutflowsTotal || 0,
+        transferVolume: (excludedIncomeTransfersTotal || 0) + (excludedExpenseTransfersTotal || 0) + (externalTransferOutflowsTotal || 0),
       },
     });
   } catch (error) {
@@ -651,6 +659,31 @@ router.patch('/:householdId/members/:memberId', authMiddleware, householdAuthMid
   } catch (err) {
     console.error('[member update] error', err && (err.stack || err.message || err));
     next(err);
+  }
+});
+
+// GET financial audit breakdown — reconciliation report for a specific month
+// Returns every dollar component (income, expenses, transfers) so numbers can be verified.
+router.get('/:householdId/financial-audit/:month', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId, month } = req.params;
+
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({ error: 'month must be in YYYY-MM format, e.g. 2026-03' });
+    }
+
+    const summary = await getFinancialSummary(householdId, month);
+
+    res.json({
+      householdId,
+      ...summary,
+      meta: {
+        generatedAt: new Date().toISOString(),
+        note: 'realIncome and realExpenses are after internal transfers are excluded. transferVolume shows total dollar value of all excluded transfers.',
+      },
+    });
+  } catch (error) {
+    next(error);
   }
 });
 

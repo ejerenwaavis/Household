@@ -276,13 +276,18 @@ export async function getUnifiedMonthlyIncome(householdId, month) {
     weeklyTotals[idx] += Number(income.weeklyTotal || income.amount || 0);
   }
 
+  const excludedInternalIncomeTxns = [...plaidIncomeTransactions, ...bankIncomeTransactions].filter(
+    (transaction) => internalTransferIds.has(String(transaction._id))
+  );
+
   return {
     month,
     income: incomes,
     weeklyTotals,
     total: weeklyTotals.reduce((sum, value) => sum + value, 0),
     syncedCount: syncedIncome.length,
-    excludedInternalTransfers: [...plaidIncomeTransactions, ...bankIncomeTransactions].filter((transaction) => internalTransferIds.has(String(transaction._id))).length,
+    excludedInternalTransfers: excludedInternalIncomeTxns.length,
+    excludedInternalTransfersTotal: excludedInternalIncomeTxns.reduce((sum, t) => sum + Math.abs(Number(t.amount || 0)), 0),
   };
 }
 

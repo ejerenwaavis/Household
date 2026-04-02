@@ -303,13 +303,19 @@ export async function getUnifiedMonthlyVariableExpenses(householdId, month) {
 
   const total = Object.values(byCategory).reduce((sum, amount) => sum + amount, 0);
 
+  const excludedInternalExpenseTxns = [...plaidExpenseTransactions, ...bankExpenseTransactions].filter(
+    (transaction) => internalTransferIds.has(String(transaction._id))
+  );
+
   return {
     month,
     expenses: merged,
     byCategory,
     total,
-    excludedInternalTransfers: [...plaidExpenseTransactions, ...bankExpenseTransactions].filter((transaction) => internalTransferIds.has(String(transaction._id))).length,
+    excludedInternalTransfers: excludedInternalExpenseTxns.length,
+    excludedInternalTransfersTotal: excludedInternalExpenseTxns.reduce((sum, t) => sum + Math.abs(Number(t.amount || 0)), 0),
     externalTransferOutflows: externalTransferOutflows.length,
+    externalTransferOutflowsTotal: externalTransferOutflows.reduce((sum, t) => sum + Math.abs(Number(t.amount || 0)), 0),
   };
 }
 
