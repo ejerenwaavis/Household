@@ -4,9 +4,19 @@
  */
 
 import mongoose from 'mongoose';
+import OpenAI from 'openai';
 import PlaidTransaction from '../models/PlaidTransaction.js';
 import logger from '../utils/logger.js';
 import { getAutoReconciliationState } from './transactionReconciliationService.js';
+
+const openai = process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'sk-your-openai-api-key-here'
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
+
+const VALID_CATEGORIES = [
+  'Groceries', 'Dining', 'Gas', 'Medical', 'Shopping', 'Transportation',
+  'Subscriptions', 'Utilities', 'Housing', 'Transfer', 'Income', 'Other'
+];
 
 const CATEGORY_KEYWORDS = {
   'Groceries': [
@@ -133,6 +143,38 @@ async function analyzeTransactionPatterns(householdId, category, limit = 20) {
 }
 
 /**
+ * Ask OpenAI to categorize a transaction when rule-based confidence is low
+ */
+async function askOpenAIForCategory(name, merchant, description, amount) {
+  if (!openai) return null;
+  try {
+    const prompt = `Categorize this bank transaction into exactly one of these categories: ${VALID_CATEGORIES.join(', ')}.
+
+Transaction details:
+- Name: ${name || 'N/A'}
+- Merchant: ${merchant || 'N/A'}
+- Description: ${description || 'N/A'}
+- Amount: $${Math.abs(Number(amount) || 0).toFixed(2)}
+
+Reply with ONLY the category name from the list, nothing else.`;
+
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0,
+      max_tokens: 20,
+    });
+
+    const raw = (completion.choices[0]?.message?.content || '').trim();
+    const matched = VALID_CATEGORIES.find((c) => c.toLowerCase() === raw.toLowerCase());
+    return matched || null;
+  } catch (err) {
+    logger.warn('[CategorySuggestion] OpenAI fallback failed:', err.message);
+    return null;
+  }
+}
+
+/**
  * Suggest category for a transaction
  * Returns array of suggestions with confidence scores
  */
@@ -214,6 +256,23 @@ export async function suggestCategory(transaction, householdId) {
       .sort((a, b) => b.confidence - a.confidence)
       .slice(0, 5); // Top 5 suggestions
 
+    // OpenAI fallback: if top suggestion confidence is below threshold, ask AI
+    const topConfidence = finalSuggestions[0]?.confidence || 0;
+    if (topConfidence < 0.6) {
+      const aiCategory = await askOpenAIForCategory(name, merchant, description, amount);
+      if (aiCategory) {
+        // Insert/replace in suggestions at top if not already there
+        const existing = finalSuggestions.findIndex((s) => s.category === aiCategory);
+        const aiSuggestion = { category: aiCategory, confidence: 0.75, source: 'openai_fallback' };
+        if (existing >= 0) {
+          finalSuggestions[existing] = { ...finalSuggestions[existing], confidence: Math.max(finalSuggestions[existing].confidence, 0.75), source: 'openai_fallback' };
+        } else {
+          finalSuggestions.unshift(aiSuggestion);
+        }
+        finalSuggestions.sort((a, b) => b.confidence - a.confidence);
+      }
+    }
+
     logger.info('[CategorySuggestion] Generated suggestions:', {
       transactionName: name,
       suggestionsCount: finalSuggestions.length,
@@ -221,7 +280,7 @@ export async function suggestCategory(transaction, householdId) {
       topConfidence: finalSuggestions[0]?.confidence
     });
 
-    return finalSuggestions;
+    return finalSuggestions.slice(0, 5);
   } catch (error) {
     logger.error('[CategorySuggestion] Error suggesting category:', error);
     return [];

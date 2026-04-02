@@ -12,6 +12,8 @@ import { sendInviteEmail, sendWelcomeEmail } from '../services/emailService.js';
 import { getUnifiedMonthlyVariableExpenses } from '../services/unifiedExpenseService.js';
 import { getUnifiedMonthlyIncome } from '../services/unifiedIncomeService.js';
 import { getFinancialSummary } from '../services/financialSummaryService.js';
+import { generateMonthlyInsights } from '../services/aiInsightsService.js';
+import { answerFinancialQuestion } from '../services/nlQueryService.js';
 import {
   getMonthRange,
   getMonthResetCutoff,
@@ -682,6 +684,56 @@ router.get('/:householdId/financial-audit/:month', authMiddleware, householdAuth
         note: 'realIncome and realExpenses are after internal transfers are excluded. transferVolume shows total dollar value of all excluded transfers.',
       },
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET/POST /:householdId/monthly-insights/:month
+ * Generate (or retrieve cached) AI insights for a specific month.
+ * POST forces regeneration; GET uses cache if fresh.
+ */
+router.get('/:householdId/monthly-insights/:month', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId, month } = req.params;
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({ error: 'month must be in YYYY-MM format' });
+    }
+    const insights = await generateMonthlyInsights(householdId, month);
+    res.json({ householdId, month, ...insights });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:householdId/monthly-insights/:month', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId, month } = req.params;
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({ error: 'month must be in YYYY-MM format' });
+    }
+    const insights = await generateMonthlyInsights(householdId, month);
+    res.json({ householdId, month, ...insights });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /:householdId/ask
+ * Natural language financial question endpoint.
+ * Body: { "question": "How much did I spend on dining last month?" }
+ */
+router.post('/:householdId/ask', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId } = req.params;
+    const { question } = req.body;
+    if (!question || typeof question !== 'string') {
+      return res.status(400).json({ error: 'question is required' });
+    }
+    const result = await answerFinancialQuestion(householdId, question);
+    res.json(result);
   } catch (error) {
     next(error);
   }

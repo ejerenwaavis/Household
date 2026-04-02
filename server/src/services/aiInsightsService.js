@@ -391,3 +391,62 @@ export async function generateInsights(householdId) {
 export async function invalidateCache(householdId) {
   await InsightCache.deleteOne({ householdId });
 }
+
+// ============================================================
+// Monthly Insights: focused on a single YYYY-MM month
+// ============================================================
+
+export async function generateMonthlyInsights(householdId, month) {
+  const cacheKey = `${householdId}:${month}`;
+
+  // Check cache (stored with compound key in householdId field)
+  const cached = await InsightCache.findOne({ householdId: cacheKey });
+  if (cached && cached.generatedAt) {
+    const ageHours = (Date.now() - cached.generatedAt.getTime()) / (1000 * 60 * 60);
+    if (ageHours < CACHE_TTL_HOURS) {
+      return { ...cached.data, fromCache: true, cachedAt: cached.generatedAt };
+    }
+  }
+
+  // Fetch expenses and incomes for the specific month only
+  const [expenses, incomes, fixedExpenses, goals] = await Promise.all([
+    Expense.find({ householdId, month }).lean(),
+    Income.find({ householdId, month }).lean(),
+    FixedExpense.find({ householdId, isActive: true }).lean(),
+    Goal.find({ householdId, isActive: true }).lean(),
+  ]);
+
+  const spendingPatterns = analyzeSpendingPatterns(expenses, [month], incomes);
+  const budget = generateBudgetRecommendations(expenses, incomes, fixedExpenses);
+  const anomalies = detectAnomalies(expenses, [month]);
+  const metrics = calculateMetrics(expenses, incomes, fixedExpenses, goals);
+
+  const result = {
+    month,
+    spendingPatterns,
+    budgetRecommendations: budget.recommendations,
+    budget,
+    anomalies,
+    metrics,
+  };
+
+  const ruleBasedSummary = generateRuleBasedSummary(result);
+  result.aiSummary = ruleBasedSummary;
+  result.aiEnabled = true;
+
+  const aiEnhancement = await generateAISummary(result);
+  if (aiEnhancement) {
+    result.aiSummary = aiEnhancement;
+    result.aiEnhanced = true;
+  }
+
+  result.generatedAt = new Date();
+
+  await InsightCache.findOneAndUpdate(
+    { householdId: cacheKey },
+    { householdId: cacheKey, data: result, generatedAt: new Date() },
+    { upsert: true, new: true }
+  );
+
+  return result;
+}

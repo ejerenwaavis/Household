@@ -175,6 +175,11 @@ export async function syncAccountTransactions(linkedAccount) {
       detectAndMarkDuplicates(householdId).catch(e =>
         logger.error('[TransactionSync] Duplicate detection error:', e)
       );
+
+      // Run transfer candidate detection in background (non-blocking)
+      detectCandidateTransfers(householdId).catch(e =>
+        logger.error('[TransactionSync] Transfer detection error:', e)
+      );
     }
 
     return { synced, duplicates, errors };
@@ -313,6 +318,134 @@ export function initializeTransactionSyncJob() {
   } catch (error) {
     logger.error('[TransactionSync] Failed to initialize sync job:', error);
     throw error;
+  }
+}
+
+/**
+ * Scan recent PlaidTransactions for a household and flag likely internal
+ * transfers between linked accounts as candidateTransfer pairs.
+ *
+ * A pair is matched when:
+ *  - Different linked accounts within the same household
+ *  - Opposite amounts within $0.01 (one positive debit, one negative credit)
+ *  - Dates within 3 days of each other
+ *
+ * Matched pairs are marked with isInternalTransferNeutralized=true,
+ * a shared transferGroupId, transferDirection, and transferScope.
+ * Unmatched transactions whose name/category clearly indicates transfer
+ * are marked as external outflows.
+ */
+export async function detectCandidateTransfers(householdId) {
+  const SCAN_WINDOW_DAYS = 30;
+  const AMOUNT_TOLERANCE = 0.01;
+  const DATE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+  const TRANSFER_KEYWORDS = ['transfer', 'xfer', 'zelle', 'venmo', 'cashapp', 'cash app', 'paypal', 'wire'];
+  const TRANSFER_PLAID_CATEGORIES = ['TRANSFER_IN', 'TRANSFER_OUT', 'TRANSFER'];
+
+  try {
+    const cutoff = new Date(Date.now() - SCAN_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const txns = await PlaidTransaction.find({
+      householdId,
+      date: { $gte: cutoff },
+      // Only process unclassified transactions
+      transferClassificationSource: 'unknown',
+      isDuplicate: false,
+    }).lean();
+
+    if (txns.length === 0) return { flagged: 0, pairs: 0 };
+
+    let pairs = 0;
+    let flagged = 0;
+    const processed = new Set();
+
+    // First pass: match opposite-sign pairs across different accounts
+    for (let i = 0; i < txns.length; i++) {
+      const a = txns[i];
+      if (processed.has(String(a._id))) continue;
+
+      const isTransferKeyword = TRANSFER_KEYWORDS.some((kw) =>
+        (a.name || '').toLowerCase().includes(kw) ||
+        (a.description || '').toLowerCase().includes(kw)
+      );
+      const isTransferCategory = TRANSFER_PLAID_CATEGORIES.some((c) =>
+        (a.primaryCategory || '').toUpperCase().includes(c) ||
+        (a.detailedCategory || '').toUpperCase().includes(c)
+      );
+
+      if (!isTransferKeyword && !isTransferCategory) continue;
+
+      // Look for a matching counterpart
+      let matched = null;
+      for (let j = i + 1; j < txns.length; j++) {
+        const b = txns[j];
+        if (processed.has(String(b._id))) continue;
+        if (String(a.linkedAccountId) === String(b.linkedAccountId)) continue;
+
+        const amountMatch = Math.abs(Math.abs(a.amount) - Math.abs(b.amount)) <= AMOUNT_TOLERANCE;
+        if (!amountMatch) continue;
+
+        const aDate = a.date instanceof Date ? a.date : new Date(a.date);
+        const bDate = b.date instanceof Date ? b.date : new Date(b.date);
+        const dateClose = Math.abs(aDate.getTime() - bDate.getTime()) <= DATE_WINDOW_MS;
+        if (!dateClose) continue;
+
+        // Require opposite signs (one debit, one credit)
+        const oppositeSign = (a.amount > 0 && b.amount < 0) || (a.amount < 0 && b.amount > 0);
+        if (!oppositeSign) continue;
+
+        matched = b;
+        break;
+      }
+
+      if (matched) {
+        const groupId = `auto-${String(a._id)}-${String(matched._id)}`;
+        const outLeg = a.amount > 0 ? a : matched; // positive = debit = money out
+        const inLeg = a.amount < 0 ? a : matched;  // negative = credit = money in
+
+        await PlaidTransaction.updateMany(
+          { _id: { $in: [outLeg._id, inLeg._id] } },
+          {
+            isInternalTransferNeutralized: true,
+            transferGroupId: groupId,
+            transferScope: 'same-household',
+            transferClassificationSource: 'system_heuristic',
+            transferDirection: undefined, // set per-document below
+          }
+        );
+        await PlaidTransaction.updateOne(
+          { _id: outLeg._id },
+          { transferDirection: 'out' }
+        );
+        await PlaidTransaction.updateOne(
+          { _id: inLeg._id },
+          { transferDirection: 'in' }
+        );
+
+        processed.add(String(a._id));
+        processed.add(String(matched._id));
+        pairs++;
+        flagged += 2;
+      } else if (isTransferKeyword || isTransferCategory) {
+        // Unmatched but looks like a transfer — flag as external
+        const direction = a.amount > 0 ? 'out' : 'in';
+        await PlaidTransaction.updateOne(
+          { _id: a._id },
+          {
+            transferScope: 'external',
+            transferDirection: direction,
+            transferClassificationSource: 'system_heuristic',
+          }
+        );
+        processed.add(String(a._id));
+        flagged++;
+      }
+    }
+
+    logger.info('[TransactionSync] Transfer detection complete:', { householdId, pairs, flagged });
+    return { pairs, flagged };
+  } catch (error) {
+    logger.error('[TransactionSync] Transfer detection failed:', error);
+    return { pairs: 0, flagged: 0 };
   }
 }
 
