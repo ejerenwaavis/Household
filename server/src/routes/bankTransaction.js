@@ -10,6 +10,7 @@ import CardStatement from '../models/CardStatement.js';
 import CreditCard from '../models/CreditCard.js';
 import { getMonthResetCutoff } from '../services/monthWorkspaceService.js';
 import { parseCsvText, inferBankName } from './statement.js';
+import { suggestCategory } from '../services/categorySuggestionService.js';
 
 const router = Router({ mergeParams: true });
 
@@ -674,6 +675,43 @@ router.post('/:householdId/import-csv', authMiddleware, householdAuthMiddleware,
     }
 
     res.json({ imported, skipped, detectedFormat, bankName: parsed.bankName, accountMask: parsed.accountMask, totalRows: parsed.transactions.length });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Suggest categories for a batch of transactions (used by the upload review and edit mode auto-suggest)
+router.post('/:householdId/suggest-categories', authMiddleware, householdAuthMiddleware, async (req, res, next) => {
+  try {
+    const { householdId } = req.params;
+    const { transactions } = req.body;
+    if (!Array.isArray(transactions) || transactions.length === 0) {
+      return res.json({ suggestions: {} });
+    }
+    const limited = transactions.slice(0, 100);
+    const results = {};
+    await Promise.all(
+      limited.map(async (item) => {
+        if (!item.key) return;
+        try {
+          const suggestions = await suggestCategory(
+            {
+              name: item.description || '',
+              merchant_name: item.description || '',
+              description: item.description || '',
+              amount: Number(item.amount) || 0,
+            },
+            householdId
+          );
+          if (suggestions.length > 0) {
+            results[item.key] = suggestions[0].category;
+          }
+        } catch {
+          // ignore per-item errors — non-critical
+        }
+      })
+    );
+    res.json({ suggestions: results });
   } catch (error) {
     next(error);
   }

@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import api from '../services/api';
 
 const fmtCurrency = (value) => `$${(Number(value) || 0).toFixed(2)}`;
-const TRANSACTION_CATEGORIES = ['Groceries', 'Dining', 'Gas', 'Medical', 'Shopping', 'Transportation', 'Subscriptions', 'Utilities', 'Housing', 'Transfer', 'Income', 'Other'];
+const TRANSACTION_CATEGORIES = ['Groceries', 'Dining', 'Food & Drinks', 'Quick Stops', 'Gas', 'Medical', 'Shopping', 'Transportation', 'Travel', 'Subscriptions', 'Utilities', 'Housing', 'Outing', 'Transfer', 'Income', 'Other'];
 
 function fmtSignedTransactionAmount(transaction) {
   const rawAmount = Number(transaction?.amount) || 0;
@@ -154,6 +154,8 @@ export default function TransactionReviewPage() {
   const [importedDrafts, setImportedDrafts] = useState({});
   const [syncedEditMode, setSyncedEditMode] = useState(false);
   const [syncedDrafts, setSyncedDrafts] = useState({});
+  const [savingAllSynced, setSavingAllSynced] = useState(false);
+  const [savingAllImported, setSavingAllImported] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
@@ -247,7 +249,32 @@ export default function TransactionReviewPage() {
 
       const successfulFiles = parsedFiles.filter((file) => !file.error && (file.transactions || []).length > 0);
       if (successfulFiles.length > 0) {
-        setReviewGroups((current) => mergeParsedFiles(current, successfulFiles));
+        // Fetch AI category suggestions for the parsed transactions before rendering the review table
+        let enrichedFiles = successfulFiles;
+        try {
+          const allForSuggestion = [];
+          successfulFiles.forEach((file, fi) => {
+            (file.transactions || []).forEach((t, ti) => {
+              allForSuggestion.push({ key: `${fi}_${ti}`, description: t.description || '', amount: t.amount || 0 });
+            });
+          });
+          if (allForSuggestion.length > 0 && user?.householdId) {
+            const suggestRes = await api.post(`/bank-transactions/${user.householdId}/suggest-categories`, { transactions: allForSuggestion });
+            const suggestionsMap = suggestRes.data.suggestions || {};
+            if (Object.keys(suggestionsMap).length > 0) {
+              enrichedFiles = successfulFiles.map((file, fi) => ({
+                ...file,
+                transactions: (file.transactions || []).map((t, ti) => ({
+                  ...t,
+                  category: suggestionsMap[`${fi}_${ti}`] || t.category || 'Other',
+                })),
+              }));
+            }
+          }
+        } catch (suggestErr) {
+          console.warn('[TransactionReviewPage] category auto-suggest failed (non-critical):', suggestErr?.message);
+        }
+        setReviewGroups((current) => mergeParsedFiles(current, enrichedFiles));
         setExpandedGroups((current) => successfulFiles.reduce((next, file) => ({
           ...next,
           [file.accountIdentityKey]: true,
@@ -506,6 +533,118 @@ export default function TransactionReviewPage() {
       delete next[transactionId];
       return next;
     });
+  };
+
+  const handleStartSyncedEditing = () => {
+    const initialDrafts = {};
+    syncedTransactions.forEach((t) => {
+      if (!t.isReconciled) {
+        initialDrafts[t._id] = {
+          userCategory: t.userCategory || t.primaryCategory || 'Other',
+          saving: false,
+        };
+      }
+    });
+    setSyncedDrafts(initialDrafts);
+    setSyncedEditMode(true);
+  };
+
+  const handleDoneSyncedEditing = async () => {
+    if (savingAllSynced) return;
+    const pending = Object.keys(syncedDrafts).filter((id) => !syncedDrafts[id].saving);
+    if (!pending.length) { setSyncedEditMode(false); return; }
+    setSavingAllSynced(true);
+    await Promise.allSettled(
+      pending.map(async (id) => {
+        const transaction = syncedTransactions.find((t) => t._id === id);
+        if (!transaction) return;
+        try {
+          const response = await api.patch(`/plaid/transactions/${id}`, {
+            userCategory: syncedDrafts[id].userCategory,
+            isReconciled: true,
+          });
+          const updated = response.data.transaction;
+          setSyncedTransactions((current) =>
+            current.map((row) => (row._id === id ? { ...row, ...updated } : row))
+          );
+        } catch (err) {
+          console.error('[TransactionReviewPage] bulk save synced error:', err);
+        }
+      })
+    );
+    setSyncedDrafts({});
+    setSavingAllSynced(false);
+    setSyncedEditMode(false);
+  };
+
+  const handleCancelSyncedEditing = () => {
+    setSyncedDrafts({});
+    setSyncedEditMode(false);
+  };
+
+  const handleStartImportedEditing = async () => {
+    setImportedEditMode(true);
+    if (!user?.householdId) return;
+    try {
+      const toSuggest = savedTransactions
+        .filter((t) => !t.category || t.category === 'Other')
+        .map((t) => ({ key: String(t._id), description: t.description || '', amount: t.amount || 0 }));
+      if (toSuggest.length === 0) return;
+      const res = await api.post(`/bank-transactions/${user.householdId}/suggest-categories`, { transactions: toSuggest });
+      const suggestions = res.data.suggestions || {};
+      const suggestedDrafts = {};
+      toSuggest.forEach(({ key }) => {
+        if (suggestions[key]) {
+          const transaction = savedTransactions.find((t) => String(t._id) === key);
+          if (transaction) {
+            suggestedDrafts[key] = {
+              category: suggestions[key],
+              assignedFixedExpenseId: transaction.assignedFixedExpenseId || '',
+              saving: false,
+            };
+          }
+        }
+      });
+      if (Object.keys(suggestedDrafts).length > 0) {
+        setImportedDrafts((current) => ({ ...suggestedDrafts, ...current }));
+      }
+    } catch (err) {
+      console.warn('[TransactionReviewPage] auto-suggest on edit open failed (non-critical):', err?.message);
+    }
+  };
+
+  const handleDoneImportedEditing = async () => {
+    if (savingAllImported) return;
+    const pending = Object.keys(importedDrafts).filter((id) => !importedDrafts[id].saving);
+    if (!pending.length) { setImportedEditMode(false); return; }
+    setSavingAllImported(true);
+    await Promise.allSettled(
+      pending.map(async (id) => {
+        const transaction = savedTransactions.find((t) => t._id === id);
+        if (!transaction || !user?.householdId) return;
+        try {
+          const draft = importedDrafts[id];
+          const response = await api.patch(`/bank-transactions/${user.householdId}/${id}`, {
+            category: draft.category,
+            assignedFixedExpenseId: draft.assignedFixedExpenseId || null,
+          });
+          const updated = response.data.transaction;
+          setSavedTransactions((current) =>
+            current.map((row) => (row._id === id ? { ...row, ...updated } : row))
+          );
+        } catch (err) {
+          console.error('[TransactionReviewPage] bulk save imported error:', err);
+        }
+      })
+    );
+    setImportedDrafts({});
+    setSavingAllImported(false);
+    setImportedEditMode(false);
+  };
+
+  const handleCancelImportedEditing = () => {
+    setImportedDrafts({});
+    setImportedEditMode(false);
   };
 
   const saveSyncedTransaction = async (transaction) => {
@@ -972,12 +1111,32 @@ export default function TransactionReviewPage() {
               <h2 className="font-semibold text-gray-900 dark:text-gray-100">Imported Transactions for {selectedMonth}</h2>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Manual imports stay separate from Plaid but are matched against linked accounts during import.</p>
             </div>
-            <button
-              onClick={() => setImportedEditMode((current) => !current)}
-              className="px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100"
-            >
-              {importedEditMode ? 'Done Editing' : 'Enable Edit'}
-            </button>
+            {importedEditMode ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleDoneImportedEditing}
+                  disabled={savingAllImported}
+                  className="px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 text-sm disabled:opacity-50"
+                >
+                  {savingAllImported ? 'Saving...' : 'Done Editing'}
+                </button>
+                <button
+                  onClick={handleCancelImportedEditing}
+                  disabled={savingAllImported}
+                  className="px-2.5 py-1.5 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50 text-sm disabled:opacity-50"
+                  title="Cancel and discard changes"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleStartImportedEditing}
+                className="px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 text-sm"
+              >
+                Enable Edit
+              </button>
+            )}
           </div>
 
           <div className="overflow-x-auto">
@@ -1083,12 +1242,32 @@ export default function TransactionReviewPage() {
                 AI-suggested categories are pre-filled. Review and confirm to mark as reconciled.
               </p>
             </div>
-            <button
-              onClick={() => setSyncedEditMode((current) => !current)}
-              className="px-3 py-1.5 rounded-lg border border-green-200 text-green-700 bg-green-50 hover:bg-green-100 text-sm"
-            >
-              {syncedEditMode ? 'Done Editing' : 'Review Categories'}
-            </button>
+            {syncedEditMode ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleDoneSyncedEditing}
+                  disabled={savingAllSynced}
+                  className="px-3 py-1.5 rounded-lg border border-green-200 text-green-700 bg-green-50 hover:bg-green-100 text-sm disabled:opacity-50"
+                >
+                  {savingAllSynced ? 'Saving...' : 'Done Editing'}
+                </button>
+                <button
+                  onClick={handleCancelSyncedEditing}
+                  disabled={savingAllSynced}
+                  className="px-2.5 py-1.5 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50 text-sm disabled:opacity-50"
+                  title="Cancel and discard changes"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleStartSyncedEditing}
+                className="px-3 py-1.5 rounded-lg border border-green-200 text-green-700 bg-green-50 hover:bg-green-100 text-sm"
+              >
+                Review Categories
+              </button>
+            )}
           </div>
 
           <div className="overflow-x-auto">

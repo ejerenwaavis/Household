@@ -14,8 +14,9 @@ const openai = process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'sk-
   : null;
 
 const VALID_CATEGORIES = [
-  'Groceries', 'Dining', 'Gas', 'Medical', 'Shopping', 'Transportation',
-  'Subscriptions', 'Utilities', 'Housing', 'Transfer', 'Income', 'Other'
+  'Groceries', 'Dining', 'Food & Drinks', 'Quick Stops', 'Gas', 'Medical',
+  'Shopping', 'Transportation', 'Travel', 'Subscriptions', 'Utilities',
+  'Housing', 'Outing', 'Transfer', 'Income', 'Other'
 ];
 
 const CATEGORY_KEYWORDS = {
@@ -27,32 +28,53 @@ const CATEGORY_KEYWORDS = {
   'Gas': [
     'shell', 'exxon', 'chevron', 'bp', 'mobil', 'texaco', 'sunoco',
     'citgo', 'speedway', 'loves', 'pilot', 'gas station', 'fuel',
-    'petrol', 'pump', 'gas&shop', 'circle k'
+    'petrol', 'pump'
   ],
-  'Dining Out': [
-    'restaurant', 'cafe', 'coffee', 'burger', 'pizza', 'chinese', 'thai',
-    'sushi', 'grill', 'bbq', 'steakhouse', 'diner', 'bistro', 'bar & grill',
-    'pub', 'tavern', 'doordash', 'uber eats', 'grubhub', 'postmates',
-    'delivery', 'mcdonalds', 'subway', 'chipotle', 'taco bell'
+  'Utilities': [
+    'electric company', 'water department', 'gas utility', 'power',
+    'utility', 'eversource', 'con edison', 'pg&e', 'xcel', 'duke energy',
+    'national grid', 'water bill', 'sewer'
+  ],
+  'Dining': [
+    'restaurant', 'cafe', 'bistro', 'grill', 'steakhouse', 'diner',
+    'bar & grill', 'pub', 'tavern', 'sushi', 'thai', 'chinese', 'italian',
+    'doordash', 'uber eats', 'grubhub', 'postmates', 'delivery', 'pizza'
+  ],
+  'Food & Drinks': [
+    'starbucks', 'dunkin', 'smoothie', 'juice bar', 'boba', 'bubble tea',
+    'bakery', 'bagel', 'deli', 'ice cream', 'froyo', 'panera',
+    'tropical smoothie', 'coffee shop', 'food truck', 'snack bar', 'chipotle',
+    'bbq', 'burger', 'coffee', 'cafe'
+  ],
+  'Quick Stops': [
+    'mcdonalds', 'mcdonald', 'burger king', 'wendy', 'chick-fil-a',
+    'chickfila', 'kfc', 'popeyes', 'taco bell', 'subway', 'dominos',
+    'papa johns', 'little caesars', 'sonic', 'jack in the box', 'five guys',
+    'whataburger', 'hardees', 'wawa', 'sheetz', '7-eleven', '7eleven',
+    'casey', 'quiktrip', 'circle k', 'gas&shop', 'convenience', 'drive thru',
+    'drive-thru', 'fast food'
   ],
   'Medical': [
     'pharmacy', 'doctor', 'hospital', 'clinic', 'dental', 'dentist',
     'cvs', 'walgreens', 'rite aid', 'medicine', 'medical', 'health',
     'veterinary', 'vet', 'urgent care', 'emergency', 'surgeon'
   ],
-  'Entertainment': [
-    'movie', 'cinema', 'theater', 'netflix', 'hulu', 'disney', 'spotify',
-    'concert', 'ticket', 'show', 'game', 'steam', 'playstation', 'xbox',
-    'amusement', 'theme park', 'zoo', 'museum', 'entertainment'
+  'Outing': [
+    'movie', 'cinema', 'theater', 'concert', 'ticket', 'show', 'bowling',
+    'mini golf', 'amusement', 'theme park', 'zoo', 'museum', 'nightclub',
+    'lounge', 'escape room', 'arcade', 'trampoline', 'laser tag',
+    'sporting event', 'comedy', 'venue', 'entertainment', 'game'
+  ],
+  'Subscriptions': [
+    'netflix', 'hulu', 'disney', 'spotify', 'apple music', 'amazon prime',
+    'youtube premium', 'steam', 'playstation', 'xbox', 'adobe', 'microsoft',
+    'google workspace', 'dropbox', 'zoom', 'slack', 'subscription', 'saas',
+    'peacock', 'hbo', 'paramount', 'crunchyroll', 'software'
   ],
   'Shopping': [
     'amazon', 'ebay', 'mall', 'shop', 'store', 'outlet', 'boutique',
     'retail', 'best buy', 'apple store', 'gap', 'h&m', 'forever 21',
     'zara', 'clothing', 'apparel', 'fashion'
-  ],
-  'Gas': [
-    'electric company', 'water department', 'gas utility', 'power',
-    'utility', 'eversource', 'con edison', 'pg&e'
   ],
   'Transportation': [
     'uber', 'lyft', 'taxi', 'public transport', 'metro', 'bus',
@@ -61,11 +83,8 @@ const CATEGORY_KEYWORDS = {
   ],
   'Travel': [
     'airline', 'flight', 'hotel', 'airbnb', 'booking', 'kayak',
-    'expedia', 'airport', 'resort', 'travel', 'luggage'
-  ],
-  'Business Services': [
-    'office', 'software', 'subscription', 'saas', 'zoom', 'slack',
-    'adobe', 'microsoft', 'google workspace', 'dropbox', 'aws', 'azure'
+    'expedia', 'airport', 'resort', 'travel', 'luggage', 'priceline',
+    'vrbo', 'hostel', 'cruise', 'amtrak', 'tripadvisor'
   ],
   'Personal': [
     'salon', 'barber', 'spa', 'gym', 'fitness', 'hair', 'beauty',
